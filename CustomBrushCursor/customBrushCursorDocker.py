@@ -147,8 +147,9 @@ class customBrushCursorDocker(DockWidget):
         
         #set gridlayout for listImageswidget
         self.gridLayout = QGridLayout()
+        #self.gridLayout.setVerticalSpacing(3)    #set spacing between rows
         self.listImagesWidget.setLayout(self.gridLayout)
-        
+
         
         #Open file button to browse for custom image to be used as a custom cursor,on click calls "open_file_dialog'" function
         self.open_button = QPushButton("Open image file...")
@@ -204,8 +205,6 @@ class customBrushCursorDocker(DockWidget):
         layout.addWidget(self.buttonWidget, alignment=Qt.AlignTop | Qt.AlignHCenter)
         layout.addWidget(self.optionsWidget, alignment=Qt.AlignTop)
         layout.addWidget(self.listImagesWidget,alignment = Qt.AlignTop)
-        #layout.addWidget(self.label, alignment=Qt.AlignTop | Qt.AlignLeft)
-        #layout.addWidget(self.slider, alignment=Qt.AlignTop)
         self.mainWidget.setLayout(layout)
         
         #don't show the options by default until the button is clicked 
@@ -354,17 +353,17 @@ class customBrushCursorDocker(DockWidget):
                     self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
                     
                     #when a new image is opened,create a new icon of it and add it to listitemwidget's layout
-                    #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
                     label = extendedLabel()    #create an instance of label from extendedLabel()
                     label.setInfo(destination)    #save the absolute path via setInfo method
                     pixmap = QPixmap(destination).scaled(32, 32, Qt.KeepAspectRatio)    #create a scaled pixmap that will be shown
                     label.setPixmap(pixmap)    #set pixmap for label
                     label.mousePressEvent = lambda event, label=label: self.image_clicked(label)    #create a mouse event for when label is clicked/selected
                     index = self.gridLayout.count()
+                    label.setFixedHeight(32)    #set label's height to a fixed 32pixel
                     self.gridLayout.addWidget(label,index // 4 , index % 4)  # 4 images per row    #add the label to the parent widget with gridlayout    
                     
-                    #self.selected_label = None    #change the selected_label variable to none
-                    
+                    rows = self.gridLayout.rowCount()      #get the number of rows
+                    self.listImagesWidget.setMinimumHeight(rows * 40)    #set minimum height of the images widget according to the number of rows                
                     # Clear selection
                     if self.selected_label:
                         self.selected_label.setStyleSheet("border: none;")
@@ -421,9 +420,12 @@ class customBrushCursorDocker(DockWidget):
                         pixmap = QPixmap(filePath).scaled(32, 32, Qt.KeepAspectRatio)    #create a scaled pixmap that will be shown
                         label.setPixmap(pixmap)    #set pixmap for label
                         label.mousePressEvent = lambda event, label=label: self.image_clicked(label)    #create a mouse event for when label is clicked/selected
+                        label.setFixedHeight(32)    #set label's height to a fixed 32pixel
                         self.gridLayout.addWidget(label,index // 4 , index % 4)  # 4 images per row    #add the label to the parent widget with gridlayout
                         index += 1    
                 
+                rows = self.gridLayout.rowCount()  
+                self.listImagesWidget.setMinimumHeight(rows * 40)    #set minimum hight of the images widget
                 #create the cursor for the first image
                 item = self.gridLayout.itemAt(0)    #get the first QLayoutItem from the gridLayout
                 labelWidget = item.widget()    #get the widget from  it
@@ -467,7 +469,8 @@ class customBrushCursorDocker(DockWidget):
             self.gridLayout.removeWidget(label)    #first we remove it from the layout
             label.deleteLater() #schedule the label for deletion to free up resources and to avoid conflict(s)
             self.selected_label = None    #change the selected_label variable to none
-            
+            rows = self.gridLayout.rowCount()      #get the row count after the deletion of label
+            self.listImagesWidget.setMinimumHeight(rows * 40)    #reset minimum hight of the images widget
      
     #remove the label widgets from listImagesWidget
     #arg 
@@ -487,16 +490,19 @@ class customBrushCursorDocker(DockWidget):
     #event filter that handles logic when to show the cursor 		
     def eventFilter(self, obj, event):
         q_app = QCoreApplication.instance()
-        q_win = Krita.instance().activeWindow().qwindow()
         if (event.type() == QEvent.Enter):    #if mouse pointer enters the area
             canvas = find_current_canvas()
-            KritaShape_KisToolBrush = q_win.findChild(QToolButton,"KritaShape/KisToolBrush")
-            KritaShape_KisToolMultiBrush = q_win.findChild(QToolButton,"KritaShape/KisToolMultiBrush")
-            KritaShape_KisToolLazyBrush = q_win.findChild(QToolButton,"KritaShape/KisToolLazyBrush")
-            if (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() ):    #check if a brush tool is currently selected
-                q_app.setOverrideCursor(self.customCursor)
+            if not (Krita.instance().activeWindow().qwindow() == None):
+                q_win = Krita.instance().activeWindow().qwindow()
+                KritaShape_KisToolBrush = q_win.findChild(QToolButton,"KritaShape/KisToolBrush")
+                KritaShape_KisToolMultiBrush = q_win.findChild(QToolButton,"KritaShape/KisToolMultiBrush")
+                KritaShape_KisToolLazyBrush = q_win.findChild(QToolButton,"KritaShape/KisToolLazyBrush")
+                if (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() ):    #check if a brush tool is currently selected
+                    q_app.setOverrideCursor(self.customCursor)
+                else:
+                    q_app.restoreOverrideCursor()
             else:
-                q_app.restoreOverrideCursor()
+                pass
         elif (event.type() == QEvent.Leave):
              q_app.restoreOverrideCursor()
             
