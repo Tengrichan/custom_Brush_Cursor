@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=CustomBrushCursor
+X-Python-2-Compatible=false
+X-Krita-Manual=myPluginManual.html
+Name=CustomBrushCursor
+Comment=A docker to change the default brush icon for a more visible one.
