@@ -1,22 +1,38 @@
-from PyQt5.QtWidgets import *
-from krita import *
+from PyQt5.QtWidgets import (
+        QLabel,
+        QWidget,
+        QMessageBox,
+        QToolButton,
+        QMdiArea,
+        QListWidget,
+        QPushButton,
+        QVBoxLayout,
+        QGridLayout,
+        QSlider,
+        QFileDialog,
+        QLayoutItem)
+        
+from krita import (
+        DockWidget,
+        DockWidgetFactory,
+        DockWidgetFactoryBase)
+
 from PyQt5.QtCore import (
         Qt,
+        QDir,
         QEvent,
         QCoreApplication)
 
 from PyQt5.QtGui import (
         QColor,
-        QImageReader,
+        QPainter,
         QPixmap,
         QPalette,
         QCursor,
         QTransform,
         QMouseEvent,
         QTabletEvent)
-
-from PyQt5.QtSvg import(
-        QSvgRenderer)        
+  
 
 import os
 import shutil
