@@ -7,13 +7,16 @@ from PyQt5.QtCore import (
 
 from PyQt5.QtGui import (
         QColor,
+        QImageReader,
         QPixmap,
         QPalette,
         QCursor,
         QTransform,
         QMouseEvent,
         QTabletEvent)
-        
+
+from PyQt5.QtSvg import(
+        QSvgRenderer)        
 
 import os
 import shutil
@@ -328,7 +331,7 @@ class customBrushCursorDocker(DockWidget):
     #returns with a) nothing because the "Cancel" button was clicked or b)set cursors and a new label added to gridLayout
     def open_file_dialog(self):
         options = QFileDialog.Options()
-        source_file = QFileDialog.getOpenFileName(self, "Open Image File", "", "Images (*.png *.jpg *.jpeg *.bmp );;All Files (*)", options=options)
+        source_file = QFileDialog.getOpenFileName(self, "Open Image File", "", "Images (*.png *.jpg *.jpeg *.bmp *.svg );;All Files (*)", options=options)
         
         if source_file: #if the file exists and we could open it successfully
             file_name = os.path.basename(source_file[0])    #the name of the file without any "./" or "/"
@@ -345,7 +348,7 @@ class customBrushCursorDocker(DockWidget):
                 opacity = self.sliderforOpacity.value() / 100.0
                 self.sliderforScale.setValue(0) #reset the scale slider back to 0 to avoid opening a big image which size would get increased by scale value
                 pixmapFromImage = QPixmap(destination)
-                
+              
                 if  not (pixmapFromImage.isNull()):
                     self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1.0) #an original version of the cursor which will be used to create a changing version so it's created with default values: "0" for scale and "1" for full opacity
                     self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity)  #create the changing cursor  from the static cursor
@@ -413,7 +416,7 @@ class customBrushCursorDocker(DockWidget):
                 #create the labels with the small icons 
                 index = 0
                 for filename in fileList:                   
-                    if filename.endswith(('.png', '.jpg', '.jpeg', '.bmp')):
+                    if filename.endswith(('.png', '.jpg', '.jpeg', '.bmp', '.svg' )):
                         filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
                         label = extendedLabel()    #create an instance of label from extendedLabel()
                         label.setInfo(filePath)    #save the absolute path via setInfo method
