@@ -2,6 +2,7 @@ from PyQt5.QtWidgets import (
         QLabel,
         QWidget,
         QMessageBox,
+        QCheckBox,
         QToolButton,
         QMdiArea,
         QListWidget,
@@ -128,23 +129,18 @@ class customBrushCursorDocker(DockWidget):
     #creates the custom cursor
     #arg pixmap,scale,opacity
     #return QCursor
-    def createCustomCursor(self,pixmap,scaleValue,opacity):
+    def createCustomCursor(self,pixmap,scaleValue,opacity,crosshair):
         scaled_pixmap = self.pixmapScale(pixmap,scaleValue)      #scale the pixmap with input scale value 
         #scaled_pixmap = QPixmap(pixmap).scaled(256, 256, Qt.IgnoreAspectRatio)    #create a scaled pixmap that will be shown
         scaled_pixmap = self.changeOpacity(scaled_pixmap,opacity)       #change the opacity of the already scaled pixmap with opacity
-        if (self.flip):    #if flip is true -> offset on -y by pixmap width()
-            transform = QTransform()
-            #height = self.pixmap.height()
-            #transform.translate(width,height)    #Moves the coordinate system dx along the x axis and dy along the y axis, and returns a reference to the matrix.
-            transform.scale(-1,1)
-            transformed_pixmap = scaled_pixmap.transformed(transform)    #this should mirror the pixmap on  the Y axis
-            qCursor = QCursor(transformed_pixmap,0,scaled_pixmap.height() + 1)     #create a cursor object from scaledImage and set its coordinates X=0 and Y=move the image up by its height +1pixel because its orientation
-            #qCursor = QCursor(transformed_pixmap,0,0 )     #create a cursor object from scaledImage and set its coordinates X=0 and Y=move the image up by its height +1pixel because its orientation
-            return  qCursor	
-        else:    #if flip is not true -> create pixmap as is
+        #check whether the orientation of the cursor icon is centered like a crosshair or not
+        #if it's centered then use a different offset
+        if crosshair == True:
+            qCursor = QCursor(scaled_pixmap,int(scaled_pixmap.width()/2),int(scaled_pixmap.height()/2) + 1 )
+        else:
             qCursor = QCursor(scaled_pixmap,0,scaled_pixmap.height() + 1)     #create a cursor object from scaledImage and set its coordinates X=0 and Y=move the image up by its height because its orientation
-            #qCursor = QCursor(scaled_pixmap,0,0 )     #create a cursor object from scaledImage and set its coordinates X=0 and Y=move the image up by its height because its orientation
-            return  qCursor	
+       #qCursor = QCursor(scaled_pixmap,0,0 )     #create a cursor object from scaledImage and set its coordinates X=0 and Y=0
+        return  qCursor	
     
     def initGUI(self):
         self.mainWidget = QWidget(self)
@@ -199,10 +195,10 @@ class customBrushCursorDocker(DockWidget):
         self.labelforWidth = QLabel("Width: -", self.optionsWidget)
         self.labelforHeight = QLabel("Height: -", self.optionsWidget)
         
-        #create a button to flip horizontally
-        self.flipButton = QPushButton("Flip cursor")
-        self.flipButton.clicked.connect(self.flipCursor)
-        
+        #create a checkbox to switch between two different offsets 
+        self.centeredIcon = QCheckBox("Centered cursor icon",self)
+        self.centeredIcon.stateChanged.connect(self.centerHotspot)
+		
         optionslayout = QVBoxLayout()
         optionslayout.addWidget(self.open_button)
       
@@ -215,7 +211,8 @@ class customBrushCursorDocker(DockWidget):
         optionslayout.addWidget(self.labelforWidth)
         optionslayout.addWidget(self.labelforHeight)
       
-        optionslayout.addWidget(self.flipButton, alignment=Qt.AlignTop | Qt.AlignHCenter )
+        #optionslayout.addWidget(self.flipButton, alignment=Qt.AlignTop | Qt.AlignHCenter )
+        optionslayout.addWidget(self.centeredIcon, alignment=Qt.AlignTop | Qt.AlignHCenter )
         
         self.optionsWidget.setLayout(optionslayout)
         
@@ -297,7 +294,7 @@ class customBrushCursorDocker(DockWidget):
         opacity = value / 100.0
         
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursors exists
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity)    #create new cursor with changed opacity based on static cusror
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.centeredIcon.isChecked())    #create new cursor with changed opacity based on static cusror
         else:
             pass
             
@@ -312,23 +309,33 @@ class customBrushCursorDocker(DockWidget):
         opacity = self.sliderforOpacity.value() / 100.0
 
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),value,opacity)    #create new cursor with the changed scale based on static cursor
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),value,opacity,self.centeredIcon.isChecked())    #create new cursor with the changed scale based on static cursor
 
             self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
             self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
         else:
             pass
 
-    #flips current cursor when the button is clicked
+    #changes the offset of the cursor icon if it has centered orientation
     #arg
-    #creates an updated customCursor with flipped orientation
-    def flipCursor(self):
-        opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider then convert it
-        if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-            self.flip = not (self.flip)  #flip the value from false to true or back 
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity)   #when flipping the cursor image get the current scale value from the slider instead from the original 
+    #creates an updated customCursor with a changed offset
+    def centerHotspot(self):
+        #if checkbox is checked->change the cursor icon offset
+        #pass True as arg for constructor
+        if  self.centeredIcon.isChecked():
+            if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
+                opacity = self.sliderforOpacity.value() / 100.0
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,True)   
+            else:
+                pass
+        #otherwise if the pixmap is not null  and the checkbox is NOT checked -> change offset back
         else:
-            pass        
+            if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
+                opacity = self.sliderforOpacity.value() / 100.0
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,False)   
+            else:
+                pass
+           
 
    #after creating the directory for the cursor images make it writeable for current USER
    #arg directory
@@ -366,8 +373,8 @@ class customBrushCursorDocker(DockWidget):
                 pixmapFromImage = QPixmap(destination)
               
                 if  not (pixmapFromImage.isNull()):
-                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1.0) #an original version of the cursor which will be used to create a changing version so it's created with default values: "0" for scale and "1" for full opacity
-                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity)  #create the changing cursor  from the static cursor
+                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1.0,False) #an original version of the cursor which will be used to create a changing version so it's created with default values: "0" for scale and "1" for full opacity
+                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity,self.centeredIcon.isChecked())  #create the changing cursor  from the static cursor
                     self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #set the size labels with the size values
                     self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
                     
@@ -450,8 +457,8 @@ class customBrushCursorDocker(DockWidget):
                 labelWidget = item.widget()    #get the widget from  it
                 pathFromLabel = labelWidget.getInfo()    #get the corresponding absolute path to the image from the label
                 pixmapFromLabel = QPixmap(pathFromLabel)    #create the pixmap via this absolute path then create the cursors
-                self.staticCustomCursor = self.createCustomCursor(pixmapFromLabel,0,1) 
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity)    
+                self.staticCustomCursor = self.createCustomCursor(pixmapFromLabel,0,1,False) 
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity,self.centeredIcon.isChecked())    
                     
                 self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
                 self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
@@ -470,8 +477,8 @@ class customBrushCursorDocker(DockWidget):
             pixmapFromImage = QPixmap(filePathfromImage)    #create the pixmap from file
             opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
             self.sliderforScale.setValue(0)
-            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1) 
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity)
+            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,False) 
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity,self.centeredIcon.isChecked())
             
             self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
             self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
