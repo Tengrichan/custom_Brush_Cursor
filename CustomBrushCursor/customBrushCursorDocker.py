@@ -12,6 +12,8 @@ from PyQt5.QtWidgets import (
         QSlider,
         QFileDialog,
         QPlainTextEdit,
+        QOpenGLWidget,
+        QMdiSubWindow,
         QLayoutItem)
         
 from krita import (
@@ -45,12 +47,11 @@ import math
 
 from pathlib import Path #module to handle paths
 
-def find_current_canvas():
+def findQMdiArea():
     q_window = Krita.instance().activeWindow().qwindow() #Return a handle to the QMainWindow widget. This is useful to e.g. parent dialog boxes and message box
-    #q_stacked_widget = q_window.centralWidget()
-    #canvas = q_stacked_widget.findChild(QOpenGLWidget) 
-    canvas = q_window.findChild(QMdiArea)
-    return canvas    #return with an object
+    MdiArea = q_window.findChild(QMdiArea)    
+
+    return MdiArea    #return with MdiArea 
 
 
 def isDocumentOpen():
@@ -79,8 +80,21 @@ class DebugWindow(QPlainTextEdit):
     def append_to_end(self, text):
         self.moveCursor(QTextCursor.End)
         self.insertPlainText(text)
-        
+       
+ 
+class BrushToggledONEvent(QEvent):
+    EventType = QEvent.registerEventType()  # Register a new event type
     
+    def __init__(self):
+        super().__init__(BrushToggledONEvent.EventType)  # Set the event type
+        
+class BrushToggledOFFEvent(QEvent):
+    EventType = QEvent.registerEventType()  # Register a new event type
+    
+    def __init__(self):
+        super().__init__(BrushToggledOFFEvent.EventType)  # Set the event type
+        
+            
 class customBrushCursorDocker(DockWidget):
 
     def __init__(self):
@@ -97,6 +111,8 @@ class customBrushCursorDocker(DockWidget):
         self.rotation = 0	#variable to keep track of rotation
         self.customCursor = QCursor()        #the changing version of cursor
         self.staticCustomCursor = QCursor() #an original version of custom cursor which will be used for opacity and scale as a basis
+        self.count_QMdiSubWin = 0
+        self.isCustomCursorApplied = False
 		
         self.dbgWindow = DebugWindow()
         #self.dbgWindow.show()
@@ -345,15 +361,39 @@ class customBrushCursorDocker(DockWidget):
     def hook_core_app(self):
         """ add hook to core application. """
         if (isDocumentOpen() >=1):
-            canvas = find_current_canvas()
-            canvas.installEventFilter(self)
+            QMdiArea = findQMdiArea()    #get current QMainWindow's - QMdiArea widget
+
+            #connect checkBrushTool  to the brush tool SIGNALs
+            q_win = Krita.instance().activeWindow().qwindow()
+            KritaShape_KisToolBrush = q_win.findChild(QToolButton,"KritaShape/KisToolBrush")
+            KritaShape_KisToolMultiBrush = q_win.findChild(QToolButton,"KritaShape/KisToolMultiBrush")
+            KritaShape_KisToolLazyBrush = q_win.findChild(QToolButton,"KritaShape/KisToolLazyBrush")
+            KritaShape_KisToolDynamicBrush = q_win.findChild(QToolButton,"KritaShape/KisToolDyna")
+            KritaShape_KisToolBrush.toggled.connect(self.checkBrushTool)
+            KritaShape_KisToolMultiBrush.toggled.connect(self.checkBrushTool)
+            KritaShape_KisToolLazyBrush.toggled.connect(self.checkBrushTool)
+            KritaShape_KisToolDynamicBrush.toggled.connect(self.checkBrushTool)
+            
+            #QMdiArea.subWindowActivated.connect(self.checkMdiSubWindow)    #connect a function to the subWindowActivated SIGNAL
+            QMdiArea.installEventFilter(self)
             self.optionsWidget.show()
             self.listImagesWidget.show()
 
     def release_core_app(self):
         """ remove hook from core application. """
-        canvas = find_current_canvas()
-        canvas.removeEventFilter(self)
+        QMdiArea = findQMdiArea()    #get current QMainWindow's - QMdiArea widget
+        #disconnect checkBrushTool  from the brush tool SIGNALs
+        q_win = Krita.instance().activeWindow().qwindow()
+        KritaShape_KisToolBrush = q_win.findChild(QToolButton,"KritaShape/KisToolBrush")
+        KritaShape_KisToolMultiBrush = q_win.findChild(QToolButton,"KritaShape/KisToolMultiBrush")
+        KritaShape_KisToolLazyBrush = q_win.findChild(QToolButton,"KritaShape/KisToolLazyBrush")
+        KritaShape_KisToolDynamicBrush = q_win.findChild(QToolButton,"KritaShape/KisToolDyna")
+        KritaShape_KisToolBrush.toggled.disconnect(self.checkBrushTool)
+        KritaShape_KisToolMultiBrush.toggled.disconnect(self.checkBrushTool)
+        KritaShape_KisToolLazyBrush.toggled.disconnect(self.checkBrushTool)
+        KritaShape_KisToolDynamicBrush.toggled.disconnect(self.checkBrushTool)
+            
+        QMdiArea.removeEventFilter(self)
         self.optionsWidget.hide()
         self.listImagesWidget.hide()
       
@@ -637,25 +677,106 @@ class customBrushCursorDocker(DockWidget):
         self.staticCustomCursor = QCursor()    #reset the cursors from previous state as the plugin has been turned off
         self.customCursor = QCursor()
     
+    
+    #function to check if a brush tool was turned on or off then send a custom EVENT based on the bool value
+    def checkBrushTool(self,checked):    
+        if (checked):    #one of the buttons EMITTED a toggled SIGNAL and it was true so one of them was turned ON
+            brushEvent = BrushToggledONEvent()
+            QMdiArea = findQMdiArea()   
+            QCoreApplication.postEvent(QMdiArea, brushEvent)
+        elif not (checked):    #one of the buttons EMITTED a toggled SIGNAL and it was false so one of them was turned OFF
+            brushEvent = BrushToggledOFFEvent()
+            QMdiArea = findQMdiArea()   
+            QCoreApplication.postEvent(QMdiArea, brushEvent)
+                
+                        
     #event filter that handles logic when to show the cursor 		
     def eventFilter(self, obj, event):
         q_app = QCoreApplication.instance()
         if (event.type() == QEvent.Enter):    #if mouse pointer enters the area
-            canvas = find_current_canvas()
-            if not (Krita.instance().activeWindow().qwindow() == None):
+            if (obj):  
                 q_win = Krita.instance().activeWindow().qwindow()
                 KritaShape_KisToolBrush = q_win.findChild(QToolButton,"KritaShape/KisToolBrush")
                 KritaShape_KisToolMultiBrush = q_win.findChild(QToolButton,"KritaShape/KisToolMultiBrush")
                 KritaShape_KisToolLazyBrush = q_win.findChild(QToolButton,"KritaShape/KisToolLazyBrush")
-                if (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() ):    #check if a brush tool is currently selected
-                    q_app.setOverrideCursor(self.customCursor)
-                else:
+                KritaShape_KisToolDynamicBrush = q_win.findChild(QToolButton,"KritaShape/KisToolDyna")
+                if (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() or KritaShape_KisToolDynamicBrush.isChecked() ):    #check if a brush tool is currently selected and the cursor is not set up yet
+                    if (self.isCustomCursorApplied == False):    #brush tool button is selected but custom cursor is not applied yet
+                        q_app.setOverrideCursor(self.customCursor)
+                        self.isCustomCursorApplied = True    ##set the cursor status tracking var to True
+                        #self.dbgWindow.append_to_end("ENTER event happened,BRUSH was checked and iscustomcursorapplied == False ---> TRUE\n")
+                    if (self.isCustomCursorApplied == True):    #brush tool button is selected but custom cursor is already applied
+                        pass
+                        #self.dbgWindow.append_to_end("ENTER event happened,BRUSH was checked and iscustomcursorapplied == True ---> do nothing\n")
+                else:    #brush tool button was NOT selected
                     q_app.restoreOverrideCursor()
-            else:
+                    self.isCustomCursorApplied = False
+                    #self.dbgWindow.append_to_end("ENTER event happened,brush was NOT checked ---> iscustomcursorapplied == False \n")
+            else:    #if  qwindow or qmdiarea is a nullptr do nothing
                 pass
-        elif (event.type() == QEvent.Leave):
-             q_app.restoreOverrideCursor()
+        elif (event.type() == QEvent.Leave):    #if mouse pointer leaves the area
+            if (obj):
+                q_win = Krita.instance().activeWindow().qwindow()  
+                KritaShape_KisToolBrush = q_win.findChild(QToolButton,"KritaShape/KisToolBrush")
+                KritaShape_KisToolMultiBrush = q_win.findChild(QToolButton,"KritaShape/KisToolMultiBrush")
+                KritaShape_KisToolLazyBrush = q_win.findChild(QToolButton,"KritaShape/KisToolLazyBrush")
+                KritaShape_KisToolDynamicBrush = q_win.findChild(QToolButton,"KritaShape/KisToolDyna")
+                if (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() or KritaShape_KisToolDynamicBrush.isChecked() ):    #check if a brush tool is currently selected
+                    q_app.restoreOverrideCursor()
+                    self.isCustomCursorApplied = False #set the cursor status tracking var to False
+                    #self.dbgWindow.append_to_end("LEAVE event happened,BRUSH was checked ---> iscustomcursorapplied == False \n")
+                else:    #no brust tool is selected in the time of leave event, unset Cursor on OpenGLWidget
+                    q_app.restoreOverrideCursor()
+                    self.isCustomCursorApplied = False
+                    #self.dbgWindow.append_to_end("LEAVE event happened,BRUSH was NOT checked ---> iscustomcursorapplied == False \n")
+        
+        #toggled ON event handling
+        elif (event.type() == BrushToggledONEvent.EventType):    #if a brush tool was toggled -> check where the mouse cursor is -> then turn on/off the custom cursor 
+            cursor_pos = QCursor.pos()
+            local_pos = obj.mapFromGlobal(cursor_pos)
+            if obj.rect().contains(local_pos):    #if the cursor is in the MdiArea check if any of the tools are checked
+                q_win = Krita.instance().activeWindow().qwindow()
+                KritaShape_KisToolBrush = q_win.findChild(QToolButton,"KritaShape/KisToolBrush")
+                KritaShape_KisToolMultiBrush = q_win.findChild(QToolButton,"KritaShape/KisToolMultiBrush")
+                KritaShape_KisToolLazyBrush = q_win.findChild(QToolButton,"KritaShape/KisToolLazyBrush")
+                KritaShape_KisToolDynamicBrush = q_win.findChild(QToolButton,"KritaShape/KisToolDyna")
+                if (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() or KritaShape_KisToolDynamicBrush.isChecked() and self.isCustomCursorApplied == False ):    #if a BRUSH tool was toggled ON from a NON-brush tool
+                    #self.dbgWindow.append_to_end("Cursor is in the MdiArea\n")
+                    q_app.setOverrideCursor(self.customCursor)
+                    self.isCustomCursorApplied = True    ##set the cursor status tracking var to True
+                    #self.dbgWindow.append_to_end("BRUSH TOOL TOGGLED ON and iscurstomcursorapplied == True\n")
+                elif (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() or KritaShape_KisToolDynamicBrush.isChecked() and self.isCustomCursorApplied == True):    #if brush tool is selected but custom cursor is already set -> do nothing
+                    pass
+            else:    #if event happened outside of the area do nothing
+                pass
+                
+            return True    #we signal that the event was handled and does need to be further propagated
             
+        #toggled OFF event handling
+        elif (event.type() == BrushToggledOFFEvent.EventType):
+            cursor_pos = QCursor.pos()
+            local_pos = obj.mapFromGlobal(cursor_pos)
+            if obj.rect().contains(local_pos):    #if the cursor is in the MdiArea check what tool is selected 
+                q_win = Krita.instance().activeWindow().qwindow()
+                KritaShape_KisToolBrush = q_win.findChild(QToolButton,"KritaShape/KisToolBrush")
+                KritaShape_KisToolMultiBrush = q_win.findChild(QToolButton,"KritaShape/KisToolMultiBrush")
+                KritaShape_KisToolLazyBrush = q_win.findChild(QToolButton,"KritaShape/KisToolLazyBrush")
+                KritaShape_KisToolDynamicBrush = q_win.findChild(QToolButton,"KritaShape/KisToolDyna")
+                if (not KritaShape_KisToolBrush.isChecked() or  not KritaShape_KisToolMultiBrush.isChecked() or not KritaShape_KisToolLazyBrush.isChecked() or not KritaShape_KisToolDynamicBrush.isChecked() ):    #check if a brush tool is currently selected or not
+                    q_app.restoreOverrideCursor()    #restore default cursor if a non-brush tool is selected 
+                    self.isCustomCursorApplied = False #set the cursor status tracking var to false
+                    #self.dbgWindow.append_to_end("BRUSH TOOL TOGGLED OFF, no brush tool was checked, iscustomcursorapplied == False\n")
+                else:
+                    #self.dbgWindow.append_to_end("BRUSH TOOL TOGGLED OFF, but brush tool was checked, PASS\n")
+                    pass    #if we switched from one brush tool to another do nothing
+            else:    #if event happened outside of the area restore cursor just in case
+                q_app.restoreOverrideCursor()    #restore default cursor if a non-brush tool is selected
+                self.isCustomCursorApplied = False #set the cursor tracking var to false
+                 
+            return True    #we signal that the event was handled and does need to be further propagated
+        else:    #if somehow qwindow or qmdiarea is a nullptr do nothing
+            pass
+                     
         return super().eventFilter(obj, event)
 		
 		
