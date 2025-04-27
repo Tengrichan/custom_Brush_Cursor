@@ -8,12 +8,16 @@ from PyQt5.QtWidgets import (
         QListWidget,
         QPushButton,
         QVBoxLayout,
+        QHBoxLayout,
         QGridLayout,
         QSlider,
         QFileDialog,
         QPlainTextEdit,
         QOpenGLWidget,
         QMdiSubWindow,
+        QListView,
+        QAbstractItemView,
+        QScrollArea,
         QLayoutItem)
         
 from krita import (
@@ -26,6 +30,9 @@ from PyQt5.QtCore import (
         QDir,
         QEvent,
         QPoint,
+        QSize,
+        QSettings,
+        QItemSelectionModel,
         QCoreApplication)
 
 from PyQt5.QtGui import (
@@ -37,6 +44,9 @@ from PyQt5.QtGui import (
         QTransform,
         QMouseEvent,
         QTextCursor,
+        QStandardItemModel,
+        QStandardItem,
+        QIcon,
         QTabletEvent)
   
 
@@ -44,6 +54,7 @@ import os
 import shutil
 import stat
 import math
+import random
 
 from pathlib import Path #module to handle paths
 
@@ -60,18 +71,7 @@ def isDocumentOpen():
     documentCount = len(documentsOpen) # get how many documents are opened
     return documentCount #return with the length of documentCount list
     
-class extendedLabel(QLabel):
-    
-    def __init__(self,**kwargs):
-        super().__init__(**kwargs)
-        self.info = ""
-        
-    def setInfo(self,argInfo):
-        self.info = argInfo
-    
-    def getInfo(self):
-        return self.info
-		
+    		
 class DebugWindow(QPlainTextEdit):
     
     def __init__(self,**kwargs):
@@ -113,7 +113,12 @@ class customBrushCursorDocker(DockWidget):
         self.staticCustomCursor = QCursor() #an original version of custom cursor which will be used for opacity and scale as a basis
         self.count_QMdiSubWin = 0
         self.isCustomCursorApplied = False
-		
+        #settings related stuff
+        self.loadedSetting_selectedIndex = -1    #variable to keep track of the loaded selected index of QListView, by default it's -1
+        self.filePathRole = Qt.UserRole    #simple vars used as custom roles for items
+        self.fileNameRole = Qt.UserRole + 1
+        
+        #DEBUG window related		
         self.dbgWindow = DebugWindow()
         #self.dbgWindow.show()
                
@@ -159,7 +164,7 @@ class customBrushCursorDocker(DockWidget):
         return new_pixmap
        
     #calculates the new hotspot after the rotation
-    #arg pixmap,rotation in degrees
+    #arg scaled_pixmap,transformed_pixmap,rotation in degrees
     #return an (int,int)  tuple
     def calculateCursorHotspot(self,scaled_pixmap,transformed_pixmap,rotation):
 
@@ -234,14 +239,12 @@ class customBrushCursorDocker(DockWidget):
         return (result_X,result_Y)
 
     #creates the custom cursor
-    # first we rotate the pixmap into position around Z axis then scale and change the opacity of the rotated pixmap
-    #arg pixmap,scale,opacity
+    # first we scale the pixmap,change its opacity then  rotate around Z axis 
+    #arg pixmap,scale,opacity,rotation,crosshair_bool,linuxFIX_bool
     #return QCursor
-    def createCustomCursor(self,pixmap,scaleValue,opacity,crosshair,rotation,linuxArtistModeFix):       
+    def createCustomCursor(self,pixmap,scale,opacity,rotation,crosshair,linuxArtistModeFix):       
        
-        scaled_pixmap = self.pixmapScale(pixmap,scaleValue)      #scale the pixmap with input scale value 
-        #scaled_pixmap = QPixmap(pixmap).scaled(256, 256, Qt.IgnoreAspectRatio)    #create a scaled pixmap that will be shown
-        #scaled_pixmap = self.changeRotation(scaled_pixmap,rotation)
+        scaled_pixmap = self.pixmapScale(pixmap,scale)      #scale the pixmap with input scale value 
         scaled_pixmap = self.changeOpacity(scaled_pixmap,opacity)       #change the opacity of the already scaled pixmap with opacity
                
         transform = QTransform()
@@ -269,111 +272,198 @@ class customBrushCursorDocker(DockWidget):
         return  qCursor	
     
     def initGUI(self):
+        
         self.mainWidget = QWidget(self)
         self.setWidget(self.mainWidget)
-        
-        #create three widgets specifically to separate the button from the options
+        layout = QVBoxLayout(self.mainWidget)
+        layout.setContentsMargins(4, 4, 4, 4)  # Reduce padding for compactness
+        layout.setSpacing(4)  # Tighter spacing
+        self.mainWidget.setMinimumWidth(100)
+
+
+        # Toggle button
         self.buttonWidget = QWidget(self.mainWidget)
-        self.optionsWidget = QWidget(self.mainWidget)
-        self.listImagesWidget = QListWidget(self.mainWidget)
-        
-        #Create a turn on/off button; its parent is the dockwidget itself
+        buttonLayout = QVBoxLayout(self.buttonWidget)
         self.buttonStatus = QPushButton("Activate", self)
         self.buttonStatus.setCheckable(True)
         self.buttonStatus.toggled.connect(self.toggleState)
-        
-        buttonlayout = QVBoxLayout()
-        buttonlayout.addWidget(self.buttonStatus, alignment=Qt.AlignTop | Qt.AlignHCenter)
-        self.buttonWidget.setLayout(buttonlayout)
-        
-        #set gridlayout for listImageswidget
-        self.gridLayout = QGridLayout()
-        #self.gridLayout.setVerticalSpacing(3)    #set spacing between rows
-        self.listImagesWidget.setLayout(self.gridLayout)
+        buttonLayout.addWidget(self.buttonStatus, alignment=Qt.AlignTop | Qt.AlignHCenter)
+        layout.addWidget(self.buttonWidget)
 
-        
-        #Open file button to browse for custom image to be used as a custom cursor,on click calls "open_file_dialog'" function
+        # Options widget
+        self.optionsWidget = QWidget(self.mainWidget)
+        optionsLayout = QVBoxLayout(self.optionsWidget)
+        optionsLayout.setSpacing(3)  # Compact options
+
+        # Open file button
         self.open_button = QPushButton("Open image file...")
         self.open_button.clicked.connect(self.open_file_dialog)
-        
-        # Create a label to show the current opacity value
-        self.labelforOpacity = QLabel("Opacity: 50%", self.optionsWidget)
-        
-        # Create a slider for opacity
-        self.sliderforOpacity = QSlider(Qt.Horizontal, self.optionsWidget)
-        self.sliderforOpacity.setRange(0, 100)  # Range from 0 to 100
-        self.sliderforOpacity.setValue(50)  # Default value (100% opacity)
-        self.sliderforOpacity.valueChanged.connect(self.update_cursorOpacity)     
-        
-        self.labelforRotation = QLabel("Rotation(in degrees): 0", self.optionsWidget)
-        # Create a slider for rotation
-        self.sliderforRotation = QSlider(Qt.Horizontal, self.optionsWidget)
-        self.sliderforRotation.setRange(0, 360)  # Range from 0 to 360
-        self.sliderforRotation.setValue(0)  # Default value (0 degrees rotation by default)
-        self.sliderforRotation.valueChanged.connect(self.update_cursorRotation) 
-        
-        
-        # Create a label to show scaling
-        self.labelforScale = QLabel("Scale: 0", self.optionsWidget)
-        
-        # Create a slider for scaling
-        self.sliderforScale = QSlider(Qt.Horizontal, self.optionsWidget)
-        self.sliderforScale.setRange(-10, 10)  # Range from -10 to 10
+        optionsLayout.addWidget(self.open_button)
+
+        # Opacity controls
+        self.labelforOpacity = QLabel("Opacity: 50%")
+        self.sliderforOpacity = QSlider(Qt.Horizontal)
+        self.sliderforOpacity.setRange(0, 100)
+        self.sliderforOpacity.setValue(50)
+        self.sliderforOpacity.valueChanged.connect(self.update_cursorOpacity)
+        optionsLayout.addWidget(self.labelforOpacity)
+        optionsLayout.addWidget(self.sliderforOpacity)
+
+        # Scale controls
+        self.labelforScale = QLabel("Scale: 0")
+        self.sliderforScale = QSlider(Qt.Horizontal)
+        self.sliderforScale.setRange(-10, 10)
         self.sliderforScale.setSingleStep(1)
         self.sliderforScale.setPageStep(1)
-        self.sliderforScale.setValue(0)  # Default value (-1 or 0 or 1 for original scale)
-        self.sliderforScale.valueChanged.connect(self.update_cursorScale)     
-        
-        #create labels for cursor size
-        self.labelforWidth = QLabel("Width: -", self.optionsWidget)
-        self.labelforHeight = QLabel("Height: -", self.optionsWidget)
-        
-        #create a checkbox to switch between two different offsets 
-        self.centeredIcon = QCheckBox("Centered cursor icon",self)
-        self.centeredIcon.stateChanged.connect(self.centerHotspot)
-        
-        #create a checkbox to control Artist Mode fix on linux
-        self.linuxArtistModeFixCheckbox = QCheckBox("(For Linux) Artist mode fix",self)
-        self.linuxArtistModeFixCheckbox.stateChanged.connect(self.linuxArtistModeFix)
-		
-        optionslayout = QVBoxLayout()
-        optionslayout.addWidget(self.open_button)
-      
-        optionslayout.addWidget(self.labelforOpacity)
-        optionslayout.addWidget(self.sliderforOpacity)
-        
-        optionslayout.addWidget(self.labelforScale)
-        optionslayout.addWidget(self.sliderforScale)
-        
-        optionslayout.addWidget(self.labelforWidth)
-        optionslayout.addWidget(self.labelforHeight)
-        
-        # @VeryEvilHuman: I don't know how to add margins in Qt, empty label works tho
-        optionslayout.addWidget(QLabel("", self.optionsWidget))
-        
-        optionslayout.addWidget(self.labelforRotation)
-        optionslayout.addWidget(self.sliderforRotation)
-      
-        optionslayout.addWidget(self.centeredIcon, alignment=Qt.AlignTop | Qt.AlignHCenter )
-        optionslayout.addWidget(self.linuxArtistModeFixCheckbox, alignment=Qt.AlignTop | Qt.AlignHCenter )
-        self.optionsWidget.setLayout(optionslayout)
-        
-        #widget layout
-        layout = QVBoxLayout()
-        layout.addWidget(self.buttonWidget, alignment=Qt.AlignTop | Qt.AlignHCenter)
-        layout.addWidget(self.optionsWidget, alignment=Qt.AlignTop)
-        layout.addWidget(self.listImagesWidget,alignment = Qt.AlignTop)
-        self.mainWidget.setLayout(layout)
-        
-        #don't show the options by default until the button is clicked 
-        self.optionsWidget.hide()
-        self.listImagesWidget.hide()
-	
- 	
-    def closeEvent(self, event):
-        self.release_core_app()
-        return super().closeEvent(event)
+        self.sliderforScale.setValue(0)
+        self.sliderforScale.valueChanged.connect(self.update_cursorScale)
+        optionsLayout.addWidget(self.labelforScale)
+        optionsLayout.addWidget(self.sliderforScale)
 
+        # Size labels
+        self.labelforWidth = QLabel("Width: -")
+        self.labelforHeight = QLabel("Height: -")
+        # Create a horizontal layout for width and height labels
+        labelRowLayout = QHBoxLayout()
+        labelRowLayout.addWidget(self.labelforWidth)
+        labelRowLayout.addSpacing(15)  # roughly a 'tab' size of spacing
+        labelRowLayout.addWidget(self.labelforHeight)
+
+        # Add this horizontal layout to main optionsLayout
+        optionsLayout.addLayout(labelRowLayout)
+
+        # Rotation controls
+        self.labelforRotation = QLabel("Rotation: 0°")
+        self.sliderforRotation = QSlider(Qt.Horizontal)
+        self.sliderforRotation.setRange(0, 360)
+        self.sliderforRotation.setValue(0)
+        self.sliderforRotation.valueChanged.connect(self.update_cursorRotation)
+        optionsLayout.addWidget(self.labelforRotation)
+        optionsLayout.addWidget(self.sliderforRotation)
+
+        # Checkboxes
+        self.centeredIcon = QCheckBox("Centered cursor icon")
+        self.centeredIcon.stateChanged.connect(self.centerHotspot)
+        self.linuxArtistModeFixCheckbox = QCheckBox("(For Linux) Artist mode fix")
+        self.linuxArtistModeFixCheckbox.stateChanged.connect(self.linuxArtistModeFix)
+        optionsLayout.addWidget(self.centeredIcon, alignment=Qt.AlignTop | Qt.AlignHCenter)
+        optionsLayout.addWidget(self.linuxArtistModeFixCheckbox, alignment=Qt.AlignTop | Qt.AlignHCenter)
+      
+        layout.addWidget(self.optionsWidget)
+        
+        # Icon view (replaced QListWidget)
+        self.iconView = QListView(self.mainWidget)
+        self.iconView.setViewMode(QListView.IconMode)    #set the view mode to IconMode 
+        self.iconView.setSelectionMode(QAbstractItemView.SingleSelection)    #set selection mode to Single select only
+        self.iconView.setResizeMode(QListView.Adjust)    #behaviour when a resize occurs -> "If this property is Adjust , the items will be laid out again when the view is resized"
+        self.iconView.setMovement(QListView.Static)    #property that determines whether the items can be moved freely , Static -> no movement at all
+        self.iconView.setSpacing(5)    #padding around the icons , "This property is the size of the empty space that is padded around an item in the layout"
+        self.iconView.setIconSize(QSize(32, 32))  # Initial size of the icons
+        self.iconView.setMinimumHeight(40)    #set the minimum height of iconview so it will show at least one row of icons at all times
+        self.iconView.setGridSize(QSize(37, 37))  # Icon + spacing
+        #self.iconView.setFlow(QListView.LeftToRight)
+        #self.iconView.setWrapping(True)
+        self.iconView.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)    #set dynamic scrollbars based on size
+        self.iconView.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.iconView.setEditTriggers(QAbstractItemView.NoEditTriggers)    #remove the ability to edit the icons and related part in any way
+        self.iconView.setStyleSheet("QListView::item:selected { border: 1px solid rgba(100, 149, 237, 1); background: rgba(100, 149, 237, 0.2); }")    #use "cornflowerblue" as highlight colour for border and background colour
+        self.iconView.clicked.connect(self.on_icon_clicked)  # Add click handler 
+
+        layout.addWidget(self.iconView, stretch=1)    #allow iconView to expand
+
+        # Hide options and iconView by default
+        self.optionsWidget.hide()
+        self.iconView.hide() 
+        
+    def adjustIconSize(self):
+        viewWidth = self.iconView.viewport().width()    #get current viewport width
+        viewHeight = self.iconView.viewport().height()   ##get current viewport height
+        spacing = self.iconView.spacing()    #get spacing value
+        margins = self.iconView.contentsMargins()    #get margins value if any
+        totalMargin = margins.left() + margins.right()    #calculate total margin
+        #iconWidth = max(32, min(150, viewWidth // 3 - self.iconView.spacing() * 2)) 
+        #iconWidth = max(32, min(150, (viewWidth - totalMargin - spacing * 5) // 4))
+        #iconWidth = max(32, min(150, viewWidth // 4))
+
+        # Calculate icon size based on height
+        iconHeight = max(32, min(150, viewHeight // 4))  
+    
+        
+        self.iconView.setIconSize(QSize(iconHeight, iconHeight))    #set iconsize with new value
+        self.iconView.setGridSize(QSize(iconHeight + spacing , iconHeight + spacing ))    #set gridszie based on iconHeight
+        self.iconView.viewport().update()  # Force redraw
+        
+    #overwrite resizeEvent for iconView to automatically call adjustIconSize()    
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.iconView.isVisible():
+            self.adjustIconSize()
+            
+            
+
+    #the location of the INI file is supposed to be under these paths:       
+    #on WINDOWS:
+        # .../AppData/Roaming/Krita/customBrushCursorDocker.ini
+    #on LINUX: 
+        # /home/user/.config/Krita/customBrushCursorDocker.ini
+     #on macOS:   
+        # /Users/user/Library/Preferences/Krita/customBrushCursorDocker.ini
+    def saveSettings(self):
+        """Save the current state of the widgets."""
+        settings = QSettings(QSettings.IniFormat, QSettings.UserScope, "krita", "customBrushCursorDocker")
+        
+        # Save Opacity slider state
+        settings.setValue("Opacity", self.sliderforOpacity.value())
+        
+        # Save Scale slider value
+        settings.setValue("Scale", self.sliderforScale.value())
+        
+        # Save Rotation slider value
+        settings.setValue("Rotation", self.sliderforRotation.value())
+        
+        #Save Checkbox_1: Centered Cursor Icon
+        settings.setValue("Checkbox_CenteredCursorIcon",self.centeredIcon.isChecked())
+        
+        #Save Checkbox_2: Artist mode fix(For Linux)
+        settings.setValue("Checkbox_ArtistModeFIX",self.linuxArtistModeFixCheckbox.isChecked())
+
+        # Save selected index from QListView
+        selected_indices = self.iconView.selectionModel().selectedIndexes()    #save the list of selected indexes of the the model,since it's single selection the list will have only 1 entry
+        if selected_indices:
+            settings.setValue("SelectedIcon", selected_indices[0].row())    #get the list's first entry and save its row attribute
+        else:
+            settings.setValue("SelectedIcon", -1)  # No selection
+        
+    #loads saved settings 
+    #arg
+    #return selected_index which is used to create the cursor
+    def loadSettings(self):
+        #self.dbgWindow.append_to_end("loadSettings method has been executed\n")
+        settings = QSettings(QSettings.IniFormat, QSettings.UserScope, "krita", "customBrushCursorDocker")
+        
+        # Load Opacity slider state (default to  50 )
+        self.sliderforOpacity.setValue(settings.value("Opacity", 50, type=int))
+        
+        # Load Scale slider state (default to  0 )
+        self.sliderforScale.setValue(settings.value("Scale", 0, type=int))
+        
+        # Load Opacity slider state (default to  0 )
+        self.sliderforRotation.setValue(settings.value("Rotation", 0, type=int))
+        
+        # Load Checkbox_1: Centered Cursor Icon state (default to False if not found)
+        self.centeredIcon.setChecked(settings.value("Checkbox_CenteredCursorIcon", False, type=bool))
+        
+        # Load Checkbox_2: Artist mode fix(For Linux) state (default to False if not found)
+        self.linuxArtistModeFixCheckbox.setChecked(settings.value("Checkbox_ArtistModeFIX", False, type=bool))
+        
+        # Load selected index for QListView (if no saved setting is found -1 --> set the 1st item as selected icon)
+        selected_index = settings.value("SelectedIcon", -1, type=int)    
+        if selected_index != -1:
+            self.iconView.setCurrentIndex(self.iconView.model().index(selected_index, 0))    #(row,coloumn) 
+        else:
+            self.iconView.setCurrentIndex(self.iconView.model().index(0, 0))    #(row,coloumn) == 0,0 so select the first icon in the model
+        
+        return selected_index
 
     def hook_core_app(self):
         """ add hook to core application. """
@@ -391,10 +481,11 @@ class customBrushCursorDocker(DockWidget):
             KritaShape_KisToolLazyBrush.toggled.connect(self.checkBrushTool)
             KritaShape_KisToolDynamicBrush.toggled.connect(self.checkBrushTool)
             
-            #QMdiArea.subWindowActivated.connect(self.checkMdiSubWindow)    #connect a function to the subWindowActivated SIGNAL
-            QMdiArea.installEventFilter(self)
-            self.optionsWidget.show()
-            self.listImagesWidget.show()
+            QMdiArea.installEventFilter(self)    #install the eventFilter on this object 
+            self.iconView.viewport().installEventFilter(self)    #install the eventFilter on this object 
+            
+            self.optionsWidget.show()    #show optionsWidget
+            self.iconView.show()  # show iconView 
 
     def release_core_app(self):
         """ remove hook from core application. """
@@ -410,9 +501,13 @@ class customBrushCursorDocker(DockWidget):
         KritaShape_KisToolLazyBrush.toggled.disconnect(self.checkBrushTool)
         KritaShape_KisToolDynamicBrush.toggled.disconnect(self.checkBrushTool)
             
-        QMdiArea.removeEventFilter(self)
-        self.optionsWidget.hide()
-        self.listImagesWidget.hide()
+        QMdiArea.removeEventFilter(self)    #remove eventFilter from this object
+        self.iconView.viewport().removeEventFilter(self)    #remove eventFilter from this object
+        self.optionsWidget.hide()    #hide optionsWidget
+        self.iconView.hide()  # hide iconView 
+        
+        #save the settings after hiding the correspoinding widgets
+        self.saveSettings()
       
     #main plugin ON/OFF button
     #arg button's toggled value
@@ -422,11 +517,13 @@ class customBrushCursorDocker(DockWidget):
         if checked:
             self.buttonStatus.setText('Deactivate')    #set the text on the button to "Deactivate"
             self.create_directory()    #create directory for the images if it doesn't exist already
-            self.checkforExistingFile()    #check for existing files to apply one by default
-            self.hook_core_app()    
+            self.initIconView_list()    #initialize iconView list based on files found in folder
+            #load in the settings before showing the correspoinding widgets
+            self.loadedSetting_selectedIndex = self.loadSettings()    #here we save the return value of loadSettings method which is a selected index
+            self.createCustomCursorFromModel_Item()    #then we create the custom cursor based on the loaded settings
+            self.hook_core_app()   #then show the widgets
         else:
             self.buttonStatus.setText('Activate')    #set the text on the button to "Activate"
-            self.clean_listImagesWidget()
             self.release_core_app() 
         
     #creates directory to store the custom cursor icons
@@ -460,7 +557,7 @@ class customBrushCursorDocker(DockWidget):
         opacity = value / 100.0
         
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursors exists
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.centeredIcon.isChecked(),self.sliderforRotation.value(),self.linuxArtistModeFixCheckbox.isChecked())    #create new cursor with changed opacity based on static cusror
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create new cursor with changed opacity based on static cusror
         else:
             pass
             
@@ -475,7 +572,7 @@ class customBrushCursorDocker(DockWidget):
         opacity = self.sliderforOpacity.value() / 100.0
 
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),value,opacity,self.centeredIcon.isChecked(),self.sliderforRotation.value(),self.linuxArtistModeFixCheckbox.isChecked())    #create new cursor with the changed scale based on static cursor
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),value,opacity,self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create new cursor with the changed scale based on static cursor
 
             self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
             self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
@@ -491,14 +588,14 @@ class customBrushCursorDocker(DockWidget):
         if  self.centeredIcon.isChecked():
             if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
                 opacity = self.sliderforOpacity.value() / 100.0
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,True,self.sliderforRotation.value(),self.linuxArtistModeFixCheckbox.isChecked())   
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),True,self.linuxArtistModeFixCheckbox.isChecked())   
             else:
                 pass
         #otherwise if the pixmap is not null  and the checkbox is NOT checked -> change offset back
         else:
             if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
                 opacity = self.sliderforOpacity.value() / 100.0
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,False,self.sliderforRotation.value(),self.linuxArtistModeFixCheckbox.isChecked())   
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),False,self.linuxArtistModeFixCheckbox.isChecked())   
             else:
                 pass
             
@@ -508,14 +605,14 @@ class customBrushCursorDocker(DockWidget):
         if  self.linuxArtistModeFixCheckbox.isChecked():
             if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
                 opacity = self.sliderforOpacity.value() / 100.0
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.centeredIcon.isChecked(),self.sliderforRotation.value(),True)   
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),self.centeredIcon.isChecked(),True)   
             else:
                 pass
         #otherwise if the pixmap is not null  and the checkbox is NOT checked -> change offset back
         else:
             if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
                 opacity = self.sliderforOpacity.value() / 100.0
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.centeredIcon.isChecked(),self.sliderforRotation.value(),False)   
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),self.centeredIcon.isChecked(),False)   
             else:
                 pass
 
@@ -528,7 +625,7 @@ class customBrushCursorDocker(DockWidget):
         opacity = self.sliderforOpacity.value() / 100.0
 
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.centeredIcon.isChecked(),value,self.linuxArtistModeFixCheckbox.isChecked())    #create new cursor with the changed scale based on static cursor
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,value,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create new cursor with the changed scale based on static cursor
         else:
             pass
    #after creating the directory for the cursor images make it writeable for current USER
@@ -552,6 +649,7 @@ class customBrushCursorDocker(DockWidget):
         
         if source_file: #if the file exists and we could open it successfully
             file_name = os.path.basename(source_file[0])    #the name of the file without any "./" or "/"
+            self.dbgWindow.append_to_end("Open Image file -> file_name = \n")
             try:
                 destination = os.path.join(self.directory_customCursorImage + QDir.separator() + file_name) #create the destination absolute path 
                 self.make_directory_writable(self.directory_customCursorImage) #make directory writable if it's not 
@@ -560,7 +658,7 @@ class customBrushCursorDocker(DockWidget):
                 msgBox = QMessageBox()
                 msgBox.setText(f"File has been successfully copied to plugin's folder ")
                 msgBox.exec() 
-                
+                                
                 #create a pixmap from the copied image so we can create the cursors
                 opacity = self.sliderforOpacity.value() / 100.0
                 self.sliderforScale.setValue(0) #reset the scale slider back to 0 to avoid opening a big image which size would get increased by scale value
@@ -568,30 +666,42 @@ class customBrushCursorDocker(DockWidget):
                 pixmapFromImage = QPixmap(destination)
               
                 if  not (pixmapFromImage.isNull()):
-                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1.0,False,0,self.linuxArtistModeFixCheckbox.isChecked()) #an original version of the cursor which will be used to create a changing version so it's created with default values: "0" for scale and "1" for full opacity
-                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity,self.centeredIcon.isChecked(),0,self.linuxArtistModeFixCheckbox.isChecked())  #create the changing cursor  from the static cursor
+                    fileList = os.listdir(self.directory_customCursorImage)
+                    fileList.sort()
+                   #clear the model 
+                   #then repopulate the model so the new item -> icon will be displayed at the correct index corresponding to the picture's order in the directory along other files
+                    self.iconView.model().clear()
+                    model = QStandardItemModel()
+                    for filename in fileList:                   
+                       if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.svg' )):
+                            filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                            pixmap = QPixmap(filePath)
+                            if not pixmap.isNull():
+                                icon = QIcon(pixmap)
+                                item = QStandardItem(icon, "")
+                                item.setData(filePath, self.filePathRole)  # Store file path
+                                item.setData(filename,self.fileNameRole)    # Store filename
+                                model.appendRow(item)
+                    self.iconView.setModel(model)
+                    self.iconView.viewport().update()
+                    
+                    #search for the new item based on the newly opened image file's name
+                    # so we use the file_name var and search for the item in the model with a for-loop
+                    # when found -> get its index then use that index to automatically select the icon in the viewport
+                    for row in range(self.iconView.model().rowCount()):
+                        item = self.iconView.model().item(row)
+                        if item.data(self.fileNameRole) == file_name:
+                            index = self.iconView.model().indexFromItem(item)
+                            self.iconView.setCurrentIndex(index)
+                            self.iconView.selectionModel().select(index, QItemSelectionModel.ClearAndSelect)
+                            self.iconView.scrollTo(index)
+                            break
+                    
+                    #when the set up is complete create the cursors
+                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1.0,0,False,self.linuxArtistModeFixCheckbox.isChecked()) #an original version of the cursor which will be used to create a changing version so it's created with default values: "0" for scale and "1" for full opacity
+                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity,0,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())  #create the changing cursor  from the static cursor
                     self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #set the size labels with the size values
                     self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
-                    
-                    #when a new image is opened,create a new icon of it and add it to listitemwidget's layout
-                    label = extendedLabel()    #create an instance of label from extendedLabel()
-                    label.setInfo(destination)    #save the absolute path via setInfo method
-                    pixmap = QPixmap(destination).scaled(32, 32, Qt.KeepAspectRatio)    #create a scaled pixmap that will be shown
-                    label.setPixmap(pixmap)    #set pixmap for label
-                    label.mousePressEvent = lambda event, label=label: self.image_clicked(label)    #create a mouse event for when label is clicked/selected
-                    index = self.gridLayout.count()
-                    label.setFixedHeight(32)    #set label's height to a fixed 32pixel
-                    self.gridLayout.addWidget(label,index // 4 , index % 4)  # 4 images per row    #add the label to the parent widget with gridlayout    
-                    
-                    rows = self.gridLayout.rowCount()      #get the number of rows
-                    self.listImagesWidget.setMinimumHeight(rows * 40)    #set minimum height of the images widget according to the number of rows                
-                    # Clear selection
-                    if self.selected_label:
-                        self.selected_label.setStyleSheet("border: none;")
-     
-                    # Set new selection
-                    self.selected_label = label
-                    self.selected_label.setStyleSheet("border: 1px solid blue;") 
                 else:
                     msgBox = QMessageBox()
                     msgBox.setText(f"Pixmap is NULL after opening file")
@@ -603,7 +713,6 @@ class customBrushCursorDocker(DockWidget):
                 msgBox2.setText(f" Exception occured: {e} ")
                 msgBox2.exec() 
                 if not (os.access(destination,os.W_OK)):
-                     #self.make_directory_writable(self.directory_customCursorImage)
                      msgBox = QMessageBox()
                      msgBox.setText(f" No WRITE access to the folder ")
                      msgBox.exec() 
@@ -616,10 +725,10 @@ class customBrushCursorDocker(DockWidget):
             msgBox.setText(f" ERROR while opening file!")
             msgBox.exec() 
 
-    #function to load in an already existing cursor image that's in the folder already when the plugin is activated
+    #initialize the iconView model with the items created based on pictures 
     #arg 
-    #return with a) nothing or b) filled gridLayout with labels; set cursors
-    def checkforExistingFile(self):
+    #return with a) nothing or b) filled model with items
+    def initIconView_list(self):
         if ( os.path.isdir(self.directory_customCursorImage) ): #if the directory for customCursorImage exists
             fileList = os.listdir(self.directory_customCursorImage)	#save the number of items that are in the directory
             if not fileList :    #if filelist is empty -> no file can be found in the directory -> do nothing
@@ -627,91 +736,79 @@ class customBrushCursorDocker(DockWidget):
                 self.customCursor = QCursor()
                 pass
             else:    #if there is a file 
-                fileList.sort() #sort the entries 
-                opacity = self.sliderforOpacity.value() / 100.0
-                self.sliderforScale.setValue(0) 
-                self.sliderforRotation.setValue(0)
-                
-                #create the labels with the small icons 
-                index = 0
+                fileList.sort() #sort the entries                
+                #create a model --> create the items with the small icons --> add the items into the model and set this model for iconView to display
+                model = QStandardItemModel()
                 for filename in fileList:                   
-                    if filename.endswith(('.png', '.jpg', '.jpeg', '.bmp', '.svg' )):
+                    if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.svg' )):
                         filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
-                        label = extendedLabel()    #create an instance of label from extendedLabel()
-                        label.setInfo(filePath)    #save the absolute path via setInfo method
-                        pixmap = QPixmap(filePath).scaled(32, 32, Qt.KeepAspectRatio)    #create a scaled pixmap that will be shown
-                        label.setPixmap(pixmap)    #set pixmap for label
-                        label.mousePressEvent = lambda event, label=label: self.image_clicked(label)    #create a mouse event for when label is clicked/selected
-                        label.setFixedHeight(32)    #set label's height to a fixed 32pixel
-                        self.gridLayout.addWidget(label,index // 4 , index % 4)  # 4 images per row    #add the label to the parent widget with gridlayout
-                        index += 1    
-                
-                rows = self.gridLayout.rowCount()  
-                self.listImagesWidget.setMinimumHeight(rows * 40)    #set minimum hight of the images widget
-                #create the cursor for the first image
-                item = self.gridLayout.itemAt(0)    #get the first QLayoutItem from the gridLayout
-                labelWidget = item.widget()    #get the widget from  it
-                pathFromLabel = labelWidget.getInfo()    #get the corresponding absolute path to the image from the label
-                pixmapFromLabel = QPixmap(pathFromLabel)    #create the pixmap via this absolute path then create the cursors
-                self.staticCustomCursor = self.createCustomCursor(pixmapFromLabel,0,1,False,0,self.linuxArtistModeFixCheckbox.isChecked()) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , centered:false , rotation:0
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity,self.centeredIcon.isChecked(),0,self.linuxArtistModeFixCheckbox.isChecked())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
+                        pixmap = QPixmap(filePath)
+                        if not pixmap.isNull():
+                            icon = QIcon(pixmap)
+                            item = QStandardItem(icon, "")
+                            item.setData(filePath, self.filePathRole)  # Store file path
+                            item.setData(filename,self.fileNameRole)    # Store file name which can be considered a uniqe ID
+                            model.appendRow(item)
+                self.iconView.setModel(model)
+                self.iconView.viewport().update()
+                                         
+    def createCustomCursorFromModel_Item(self):
+         #get Item based on the loaded settings:
+         # if it's NOT -1 then get the corresponding item from the model and use it to create the cursor
+        model = self.iconView.model()
+        if  self.loadedSetting_selectedIndex != -1:
+            getItem = model.item(self.loadedSetting_selectedIndex, 0)  # Row = value , column =  0
+            if getItem:
+                filePath = getItem.data(self.filePathRole)  # Get file path
+                pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
+                self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0,False,False) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , centered:false , rotation:0
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
                     
                 self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
                 self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
-                
-                # Set the layout border on the first label 
-                self.selected_label = labelWidget
-                self.selected_label.setStyleSheet("border: 1px solid blue;")
-                
-     #when one of the cursor image is clicked set that one as the main cursor image           
-     #arg label
+            else:
+                self.staticCustomCursor = QCursor()    #reset the cursors 
+                self.customCursor = QCursor()
+        else:    # if it's -1 then default back to the fist item in the model and create the cursor with it
+             getItem = model.item(0, 0)  # Row = 0, column = 0
+             if getItem:
+                 filePath = getItem.data(self.filePathRole)  # Get file path
+                 pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
+                 self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0,False,False) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , centered:false , rotation:0
+                 self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
+                    
+                 self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
+                 self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+             else:
+                self.staticCustomCursor = QCursor()    #reset the cursors
+                self.customCursor = QCursor()
+                     
+     #when one of the cursor icon is clicked set that one as the main cursor image           
+     #arg index of clicked icon
      #return  with cursors
-    def image_clicked(self,label):
-       #get the absolute path from the selected label
-        filePathfromImage = label.getInfo()
-        if os.path.exists(filePathfromImage): #if the file exists on the given absolute path
-            pixmapFromImage = QPixmap(filePathfromImage)    #create the pixmap from file
+    def on_icon_clicked(self,index):
+       #get the absolute path from the selected item
+        filePath = index.data(self.filePathRole)
+        if os.path.exists(filePath): #if the file exists on the given absolute path
+            pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
             opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
             scale = self.sliderforScale.value()
             rotation = self.sliderforRotation.value()
-            #self.sliderforScale.setValue(0)
-            #self.sliderforRotation.setValue(0)
-            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,False,0,self.linuxArtistModeFixCheckbox.isChecked()) 
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,self.centeredIcon.isChecked(),rotation,self.linuxArtistModeFixCheckbox.isChecked())
+
+            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked()) 
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())
             
             self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
             self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
             
-            # Clear selection
-            if self.selected_label:
-                self.selected_label.setStyleSheet("border: none;")
-     
-            # Set new selection
-            self.selected_label = label
-            self.selected_label.setStyleSheet("border: 1px solid blue;")
-            
-        else: #delete the label from the layout and rearrange the remaining ones
-            self.gridLayout.removeWidget(label)    #first we remove it from the layout
-            label.deleteLater() #schedule the label for deletion to free up resources and to avoid conflict(s)
-            self.selected_label = None    #change the selected_label variable to none
-            rows = self.gridLayout.rowCount()      #get the row count after the deletion of label
-            self.listImagesWidget.setMinimumHeight(rows * 40)    #reset minimum hight of the images widget
-     
-    #remove the label widgets from listImagesWidget
-    #arg 
-    #return empty gridLayout
-    def clean_listImagesWidget(self):     
-        for i in reversed(range(self.gridLayout.count())):  # Use reversed to avoid indexing issues
-            item = self.gridLayout.itemAt(i)
-            widget = item.widget()
-            if isinstance(widget, QLabel):
-                self.gridLayout.removeWidget(widget)  # Remove the widget from the layout
-                widget.deleteLater()  # Properly delete the widget   
-        self.gridLayout.update()
-        self.selected_label = None
-        self.staticCustomCursor = QCursor()    #reset the cursors from previous state as the plugin has been turned off
-        self.customCursor = QCursor()
-    
+            #set highlight for the clicked icon
+            self.iconView.setCurrentIndex(index)
+        else: #delete the item from the layout and rearrange the remaining ones
+            model = self.iconView.model()
+            if model:
+                model.removeRow(index.row())
+            QMessageBox.warning(self, "File Missing", f"The file {filePath} was not found and has been removed.")
+              
     
     #function to check if a brush tool was turned on or off then send a custom EVENT based on the bool value
     def checkBrushTool(self,checked):    
@@ -723,13 +820,13 @@ class customBrushCursorDocker(DockWidget):
             brushEvent = BrushToggledOFFEvent()
             QMdiArea = findQMdiArea()   
             QCoreApplication.postEvent(QMdiArea, brushEvent)
-                
+
                         
     #event filter that handles logic when to show the cursor 		
     def eventFilter(self, obj, event):
         q_app = QCoreApplication.instance()
-        if (event.type() == QEvent.Enter):    #if mouse pointer enters the area
-            if (obj):  
+        if (event.type() == QEvent.Enter):    #if mouse pointer enters the QMdiArea area
+            if ( not obj == self.iconView.viewport() ):  
                 q_win = Krita.instance().activeWindow().qwindow()
                 KritaShape_KisToolBrush = q_win.findChild(QToolButton,"KritaShape/KisToolBrush")
                 KritaShape_KisToolMultiBrush = q_win.findChild(QToolButton,"KritaShape/KisToolMultiBrush")
@@ -739,18 +836,15 @@ class customBrushCursorDocker(DockWidget):
                     if (self.isCustomCursorApplied == False):    #brush tool button is selected but custom cursor is not applied yet
                         q_app.setOverrideCursor(self.customCursor)
                         self.isCustomCursorApplied = True    ##set the cursor status tracking var to True
-                        #self.dbgWindow.append_to_end("ENTER event happened,BRUSH was checked and iscustomcursorapplied == False ---> TRUE\n")
                     if (self.isCustomCursorApplied == True):    #brush tool button is selected but custom cursor is already applied
                         pass
-                        #self.dbgWindow.append_to_end("ENTER event happened,BRUSH was checked and iscustomcursorapplied == True ---> do nothing\n")
                 else:    #brush tool button was NOT selected
                     q_app.restoreOverrideCursor()
                     self.isCustomCursorApplied = False
-                    #self.dbgWindow.append_to_end("ENTER event happened,brush was NOT checked ---> iscustomcursorapplied == False \n")
             else:    #if  qwindow or qmdiarea is a nullptr do nothing
                 pass
-        elif (event.type() == QEvent.Leave):    #if mouse pointer leaves the area
-            if (obj):
+        elif (event.type() == QEvent.Leave):    #if mouse pointer leaves the QMdia area
+            if (not obj == self.iconView.viewport() ):
                 q_win = Krita.instance().activeWindow().qwindow()  
                 KritaShape_KisToolBrush = q_win.findChild(QToolButton,"KritaShape/KisToolBrush")
                 KritaShape_KisToolMultiBrush = q_win.findChild(QToolButton,"KritaShape/KisToolMultiBrush")
@@ -759,11 +853,9 @@ class customBrushCursorDocker(DockWidget):
                 if (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() or KritaShape_KisToolDynamicBrush.isChecked() ):    #check if a brush tool is currently selected
                     q_app.restoreOverrideCursor()
                     self.isCustomCursorApplied = False #set the cursor status tracking var to False
-                    #self.dbgWindow.append_to_end("LEAVE event happened,BRUSH was checked ---> iscustomcursorapplied == False \n")
                 else:    #no brust tool is selected in the time of leave event, unset Cursor on OpenGLWidget
                     q_app.restoreOverrideCursor()
                     self.isCustomCursorApplied = False
-                    #self.dbgWindow.append_to_end("LEAVE event happened,BRUSH was NOT checked ---> iscustomcursorapplied == False \n")
         
         #toggled ON event handling
         elif (event.type() == BrushToggledONEvent.EventType):    #if a brush tool was toggled -> check where the mouse cursor is -> then turn on/off the custom cursor 
@@ -776,16 +868,14 @@ class customBrushCursorDocker(DockWidget):
                 KritaShape_KisToolLazyBrush = q_win.findChild(QToolButton,"KritaShape/KisToolLazyBrush")
                 KritaShape_KisToolDynamicBrush = q_win.findChild(QToolButton,"KritaShape/KisToolDyna")
                 if (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() or KritaShape_KisToolDynamicBrush.isChecked() and self.isCustomCursorApplied == False ):    #if a BRUSH tool was toggled ON from a NON-brush tool
-                    #self.dbgWindow.append_to_end("Cursor is in the MdiArea\n")
                     q_app.setOverrideCursor(self.customCursor)
                     self.isCustomCursorApplied = True    ##set the cursor status tracking var to True
-                    #self.dbgWindow.append_to_end("BRUSH TOOL TOGGLED ON and iscurstomcursorapplied == True\n")
                 elif (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() or KritaShape_KisToolDynamicBrush.isChecked() and self.isCustomCursorApplied == True):    #if brush tool is selected but custom cursor is already set -> do nothing
                     pass
             else:    #if event happened outside of the area do nothing
                 pass
                 
-            return True    #we signal that the event was handled and does need to be further propagated
+            return True    #we signal that the event was handled and doesn't need to be further propagated
             
         #toggled OFF event handling
         elif (event.type() == BrushToggledOFFEvent.EventType):
@@ -800,18 +890,27 @@ class customBrushCursorDocker(DockWidget):
                 if (not KritaShape_KisToolBrush.isChecked() or  not KritaShape_KisToolMultiBrush.isChecked() or not KritaShape_KisToolLazyBrush.isChecked() or not KritaShape_KisToolDynamicBrush.isChecked() ):    #check if a brush tool is currently selected or not
                     q_app.restoreOverrideCursor()    #restore default cursor if a non-brush tool is selected 
                     self.isCustomCursorApplied = False #set the cursor status tracking var to false
-                    #self.dbgWindow.append_to_end("BRUSH TOOL TOGGLED OFF, no brush tool was checked, iscustomcursorapplied == False\n")
                 else:
-                    #self.dbgWindow.append_to_end("BRUSH TOOL TOGGLED OFF, but brush tool was checked, PASS\n")
                     pass    #if we switched from one brush tool to another do nothing
             else:    #if event happened outside of the area restore cursor just in case
                 q_app.restoreOverrideCursor()    #restore default cursor if a non-brush tool is selected
                 self.isCustomCursorApplied = False #set the cursor tracking var to false
                  
-            return True    #we signal that the event was handled and does need to be further propagated
+            return True    #we signal that the event was handled and doesn't need to be further propagated
+            
+        # Handle iconView viewport mouseevent to prevent item deselection
+        elif obj == self.iconView.viewport() and event.type() in (
+            QEvent.MouseButtonPress,
+            QEvent.MouseMove,
+            QEvent.MouseButtonRelease
+        ):
+            index = self.iconView.indexAt(event.pos())
+            if not index.isValid():
+                # Click on empty space, do nothing to keep selection
+                return True
         else:    #if somehow qwindow or qmdiarea is a nullptr do nothing
-            pass
-                     
+            pass       
+     
         return super().eventFilter(obj, event)
 		
 		
@@ -820,3 +919,5 @@ class customBrushCursorDocker(DockWidget):
         
 #add the dock widget to krita instance
 Krita.instance().addDockWidgetFactory(DockWidgetFactory("customBrushCursorDocker", DockWidgetFactoryBase.DockRight, customBrushCursorDocker))
+
+
