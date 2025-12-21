@@ -645,7 +645,7 @@ class customBrushCursorDocker(DockWidget):
     #returns with a) nothing because the "Cancel" button was clicked or b)set cursors and a new label added to gridLayout
     def open_file_dialog(self):
         options = QFileDialog.Options()
-        source_file = QFileDialog.getOpenFileName(self, "Open Image File", "", "Images (*.png *.jpg *.jpeg *.bmp *.svg );;All Files (*)", options=options)
+        source_file = QFileDialog.getOpenFileName(self, "Open Image File", "", "Images (*.png *.bmp *.svg *.gif *.webp);;All Files (*)", options=options)
         
         if source_file: #if the file exists and we could open it successfully
             file_name = os.path.basename(source_file[0])    #the name of the file without any "./" or "/"
@@ -673,7 +673,7 @@ class customBrushCursorDocker(DockWidget):
                     self.iconView.model().clear()
                     model = QStandardItemModel()
                     for filename in fileList:                   
-                       if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.svg' )):
+                       if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
                             filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
                             pixmap = QPixmap(filePath)
                             if not pixmap.isNull():
@@ -740,7 +740,7 @@ class customBrushCursorDocker(DockWidget):
                 #create a model --> create the items with the small icons --> add the items into the model and set this model for iconView to display
                 model = QStandardItemModel()
                 for filename in fileList:                   
-                    if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.svg' )):
+                    if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
                         filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
                         pixmap = QPixmap(filePath)
                         if not pixmap.isNull():
@@ -808,7 +808,9 @@ class customBrushCursorDocker(DockWidget):
             if model:
                 model.removeRow(index.row())
             QMessageBox.warning(self, "File Missing", f"The file {filePath} was not found and has been removed.")
-              
+            self.iconView.clearSelection()
+            self.staticCustomCursor = QCursor()    #reset the cursors
+            self.customCursor = QCursor()  
     
     #function to check if a brush tool was turned on or off then send a custom EVENT based on the bool value
     def checkBrushTool(self,checked):    
