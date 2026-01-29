@@ -21,6 +21,8 @@ from PyQt5.QtWidgets import (
         QLayoutItem)
         
 from krita import (
+        Krita,
+        Extension,
         DockWidget,
         DockWidgetFactory,
         DockWidgetFactoryBase)
@@ -33,6 +35,8 @@ from PyQt5.QtCore import (
         QSize,
         QSettings,
         QItemSelectionModel,
+        QTimer,
+        pyqtSignal,
         QCoreApplication)
 
 from PyQt5.QtGui import (
@@ -64,14 +68,35 @@ def findQMdiArea():
 
     return MdiArea    #return with MdiArea 
 
-
-def isDocumentOpen():
-    app = Krita.instance() # get the application
-    documentsOpen = app.documents() # get the open documents
-    documentCount = len(documentsOpen) # get how many documents are opened
-    return documentCount #return with the length of documentCount list
     
-    		
+ #check if there is an active window --> check the active view and with that document/canvas available 
+def isCanvasReady():
+    """    
+    window = Krita.instance().activeWindow()
+    if window:
+        views = window.views()
+        return len(views) > 0
+    return False   
+    """
+    app = Krita.instance()
+    #Is there an active window?
+    window = app.activeWindow()
+    if not window:
+        return False
+        
+    # Does that window have an active view?
+    view = window.activeView()
+    if not view:
+        return False
+        
+    #Does that view have a document attached?
+    doc = view.document()
+    if not doc:
+        return False
+        
+    return True
+
+		
 class DebugWindow(QPlainTextEdit):
     
     def __init__(self,**kwargs):
@@ -94,37 +119,112 @@ class BrushToggledOFFEvent(QEvent):
     def __init__(self):
         super().__init__(BrushToggledOFFEvent.EventType)  # Set the event type
         
+        
+#extension singleton to synchronize the UI settings across multiple windows open
+class DockerUISettingsManager(Extension):
+    instance = None
+    # This signal sends the key name and the new value
+    syncSignal = pyqtSignal(str, object)
+
+    def __init__(self,parent):
+        super().__init__(parent)
+        # Store a static reference so the Docker can find it
+        DockerUISettingsManager.instance = self
+
+    def setup(self):
+        pass
+
+    def createActions(self, window):
+        pass
+
+
+
             
 class customBrushCursorDocker(DockWidget):
 
     def __init__(self):
         super().__init__()
+        self.firstRun = True
         self.setWindowTitle("Custom Brush Cursor")
+        
         #directory stuff
         self.directory_plugin = str( os.path.dirname( os.path.realpath( __file__ ) ) )
         self.directory_customCursorImage = str("")
+        
         #cursor related stuff
         self.selected_label = None
         self.pixmap = QPixmap()    #cursor pixmap
-        self.flip = False    #variable to keep track whether to flip or not 
         self.opacity = 0    #variable to keep track of opacity
         self.rotation = 0	#variable to keep track of rotation
         self.customCursor = QCursor()        #the changing version of cursor
         self.staticCustomCursor = QCursor() #an original version of custom cursor which will be used for opacity and scale as a basis
-        self.count_QMdiSubWin = 0
         self.isCustomCursorApplied = False
+
         #settings related stuff
         self.loadedSetting_selectedIndex = -1    #variable to keep track of the loaded selected index of QListView, by default it's -1
         self.filePathRole = Qt.UserRole    #simple vars used as custom roles for items
         self.fileNameRole = Qt.UserRole + 1
         
+        # Create the timer
+        self.saveTimer = QTimer()
+        self.saveTimer.setSingleShot(True)  # Only fire once per start
+        self.saveTimer.setInterval(500)     # Wait 500ms (0.5 seconds)
+        self.saveTimer.timeout.connect(self.saveSettings)         # Connect the timer's finish line to actual save function
+        
         #DEBUG window related		
         self.dbgWindow = DebugWindow()
         #self.dbgWindow.show()
-               
+        
+        # Connect to the singleton Extension's signal
+        # We use a helper to find the manager instance
+        self.manager = DockerUISettingsManager.instance
+        self.manager.syncSignal.connect(self.update_ui_from_sync)
+        
         #GUI init
         self.initGUI()
+
+        self.create_directory()    #create directory for the images if it doesn't exist already
+        self.initIconView_list()    #initialize iconView list based on files found in folder
+
+        #load in settings to check whether runOnStartup is true or false
+        #the logic is done here so the variables get a value in time for checks 
+        self.loadedSetting_selectedIndex = self.loadSettings()    #roundabout way to load in settings because the method returns with an int but the rest of the variables are assigned a value as well
+        
+        self.setup()
+        
     
+    
+    def update_ui_from_sync(self, key, value):
+        # We block signals so we don't trigger an infinite loop
+        self.blockSignals(True)
+        if key == "Opacity":
+            self.sliderforOpacity.setValue(int(value))
+        elif key == "Scale":
+            self.sliderforScale.setValue(int(value))
+        elif key == "Rotation":
+            self.sliderforRotation.setValue(int(value))
+        elif key == "runOnStartupCheckbox":
+            self.runOnStartup.setChecked(bool(value))
+        elif key == "centeredIconCheckbox":
+            self.centeredIcon.setChecked(bool(value))
+        elif key == "linuxArtistModeFixCheckbox":
+            self.linuxArtistModeFixCheckbox.setChecked(bool(value))
+        elif key == "SelectedIcon":
+            #selected_indices = self.iconView.selectionModel().selectedIndexes()
+            #row_to_save = selected_indices[0].row()
+            index = self.iconView.model().index(int(value), 0)
+            self.iconView.setCurrentIndex(index)
+            self.on_icon_clicked(index)
+            # ... update other widgets ...
+            self.blockSignals(False)    
+    
+    
+    #Timer function to trigger save of settings 
+    #it will be called when any of the plugin settings are changed so it needs to be connected to the settings 
+    def triggerSave(self):
+        """Restarts the timer every time it's called."""
+        self.saveTimer.start()
+
 
     #scales the picture to size and returns with a pixmap
     #arg pixmap,scaleValue
@@ -306,6 +406,7 @@ class customBrushCursorDocker(DockWidget):
         self.sliderforOpacity.setRange(0, 100)
         self.sliderforOpacity.setValue(50)
         self.sliderforOpacity.valueChanged.connect(self.update_cursorOpacity)
+        self.sliderforOpacity.valueChanged.connect(lambda val: self.manager.syncSignal.emit("Opacity",val))    #when slider value changes send out a signal to Extension so other dockers can be updated
         optionsLayout.addWidget(self.labelforOpacity)
         optionsLayout.addWidget(self.sliderforOpacity)
 
@@ -317,6 +418,7 @@ class customBrushCursorDocker(DockWidget):
         self.sliderforScale.setPageStep(1)
         self.sliderforScale.setValue(0)
         self.sliderforScale.valueChanged.connect(self.update_cursorScale)
+        self.sliderforScale.valueChanged.connect(lambda val: self.manager.syncSignal.emit("Scale",val))    #when slider value changes send out a signal to Extension so other dockers can be updated
         optionsLayout.addWidget(self.labelforScale)
         optionsLayout.addWidget(self.sliderforScale)
 
@@ -338,14 +440,23 @@ class customBrushCursorDocker(DockWidget):
         self.sliderforRotation.setRange(0, 360)
         self.sliderforRotation.setValue(0)
         self.sliderforRotation.valueChanged.connect(self.update_cursorRotation)
+        self.sliderforRotation.valueChanged.connect(lambda val: self.manager.syncSignal.emit("Rotation",val))    #when slider value changes send out a signal to Extension so other dockers can be updated
         optionsLayout.addWidget(self.labelforRotation)
         optionsLayout.addWidget(self.sliderforRotation)
 
         # Checkboxes
+        self.runOnStartup = QCheckBox("Run on startup")
+        self.runOnStartup.stateChanged.connect(lambda checked: self.manager.syncSignal.emit("runOnStartupCheckbox",checked))    #when checkbox state changes send out a signal to Extension so other dockers can be updated
+        
         self.centeredIcon = QCheckBox("Centered cursor icon")
         self.centeredIcon.stateChanged.connect(self.centerHotspot)
+        self.centeredIcon.stateChanged.connect(lambda checked: self.manager.syncSignal.emit("centeredIconCheckbox",checked))    #whencheckbox state changes send out a signal to Extension so other dockers can be updated
+        
         self.linuxArtistModeFixCheckbox = QCheckBox("(For Linux) Artist mode fix")
         self.linuxArtistModeFixCheckbox.stateChanged.connect(self.linuxArtistModeFix)
+        self.linuxArtistModeFixCheckbox.stateChanged.connect(lambda checked: self.manager.syncSignal.emit("linuxArtistModeFixCheckbox",checked))    #when checkbox state changes send out a signal to Extension so other dockers can be updated
+        
+        optionsLayout.addWidget(self.runOnStartup, alignment=Qt.AlignTop | Qt.AlignHCenter)
         optionsLayout.addWidget(self.centeredIcon, alignment=Qt.AlignTop | Qt.AlignHCenter)
         optionsLayout.addWidget(self.linuxArtistModeFixCheckbox, alignment=Qt.AlignTop | Qt.AlignHCenter)
       
@@ -368,6 +479,7 @@ class customBrushCursorDocker(DockWidget):
         self.iconView.setEditTriggers(QAbstractItemView.NoEditTriggers)    #remove the ability to edit the icons and related part in any way
         self.iconView.setStyleSheet("QListView::item:selected { border: 1px solid rgba(100, 149, 237, 1); background: rgba(100, 149, 237, 0.2); }")    #use "cornflowerblue" as highlight colour for border and background colour
         self.iconView.clicked.connect(self.on_icon_clicked)  # Add click handler 
+        self.iconView.clicked.connect(lambda: self.manager.syncSignal.emit("SelectedIcon" , self.iconView.currentIndex().row())) #when iconView icon changes send out a signal to Extension so other dockers can be updated
 
         layout.addWidget(self.iconView, stretch=1)    #allow iconView to expand
 
@@ -399,75 +511,134 @@ class customBrushCursorDocker(DockWidget):
         if self.iconView.isVisible():
             self.adjustIconSize()
             
-            
+    #Krita's writeSetting generally expects strings or basic types
+    #saves the state of the sliders and checkboxes into Krita's internal  "kritarc" file
+    #arg
+    #return 
+    def saveSettings(self):        
+        """Save the current states using Krita's internal config."""
+        # Group name helps organize the settings inside the kritarc file
+        group = "customBrushCursorDocker"
+        app = Krita.instance()
+        
+        # Save Sliders
+        app.writeSetting(group, "Opacity", str(self.sliderforOpacity.value()))
+        app.writeSetting(group, "Scale", str(self.sliderforScale.value()))
+        app.writeSetting(group, "Rotation", str(self.sliderforRotation.value()))
 
-    #the location of the INI file is supposed to be under these paths:       
-    #on WINDOWS:
-        # .../AppData/Roaming/Krita/customBrushCursorDocker.ini
-    #on LINUX: 
-        # /home/user/.config/Krita/customBrushCursorDocker.ini
-     #on macOS:   
-        # /Users/user/Library/Preferences/Krita/customBrushCursorDocker.ini
-    def saveSettings(self):
-        """Save the current state of the widgets."""
-        settings = QSettings(QSettings.IniFormat, QSettings.UserScope, "krita", "customBrushCursorDocker")
-        
-        # Save Opacity slider state
-        settings.setValue("Opacity", self.sliderforOpacity.value())
-        
-        # Save Scale slider value
-        settings.setValue("Scale", self.sliderforScale.value())
-        
-        # Save Rotation slider value
-        settings.setValue("Rotation", self.sliderforRotation.value())
-        
-        #Save Checkbox_1: Centered Cursor Icon
-        settings.setValue("Checkbox_CenteredCursorIcon",self.centeredIcon.isChecked())
-        
-        #Save Checkbox_2: Artist mode fix(For Linux)
-        settings.setValue("Checkbox_ArtistModeFIX",self.linuxArtistModeFixCheckbox.isChecked())
+        # Save Checkboxes (True/False are stored as strings "true"/"false")
+        app.writeSetting(group,"Checkbox_runOnStartup", str(self.runOnStartup.isChecked()))
+        app.writeSetting(group, "Checkbox_CenteredCursorIcon", str(self.centeredIcon.isChecked()))
+        app.writeSetting(group, "Checkbox_ArtistModeFIX", str(self.linuxArtistModeFixCheckbox.isChecked()))
 
-        # Save selected index from QListView
-        selected_indices = self.iconView.selectionModel().selectedIndexes()    #save the list of selected indexes of the the model,since it's single selection the list will have only 1 entry
+        # Save QListView selection
+        selected_indices = self.iconView.selectionModel().selectedIndexes()
+        row_to_save = selected_indices[0].row()
         if selected_indices:
-            settings.setValue("SelectedIcon", selected_indices[0].row())    #get the list's first entry and save its row attribute
+             app.writeSetting(group, "SelectedIcon", str(row_to_save))    #get the list's first entry and save its row attribute
         else:
-            settings.setValue("SelectedIcon", -1)  # No selection
-        
+             app.writeSetting(group, "SelectedIcon", str(-1))               # No selection
+       
+       
+    #when the program is closing and the timer is still running for save settings... stop the timer -> save the settings immediately   
+    def on_closing(self):
+        if self.saveTimer.isActive():
+            self.saveTimer.stop()
+            self.saveSettings()    #Force the save now   
+            
+            
     #loads saved settings 
     #arg
-    #return selected_index which is used to create the cursor
+    #return selected_index which is used to create the cursor        
     def loadSettings(self):
-        #self.dbgWindow.append_to_end("loadSettings method has been executed\n")
-        settings = QSettings(QSettings.IniFormat, QSettings.UserScope, "krita", "customBrushCursorDocker")
-        
-        # Load Opacity slider state (default to  50 )
-        self.sliderforOpacity.setValue(settings.value("Opacity", 50, type=int))
-        
+        group = "customBrushCursorDocker"
+        app = Krita.instance()
+
+       # readSetting(group, key, defaultValue)
+       
+       # Load Opacity slider state (default to  50 )
+        opacity = int(app.readSetting(group, "Opacity", "50"))
+        self.sliderforOpacity.setValue(opacity)
+
         # Load Scale slider state (default to  0 )
-        self.sliderforScale.setValue(settings.value("Scale", 0, type=int))
+        scale = int(app.readSetting(group, "Scale", "0"))
+        self.sliderforScale.setValue(scale)
         
         # Load Opacity slider state (default to  0 )
-        self.sliderforRotation.setValue(settings.value("Rotation", 0, type=int))
+        rotation = int(app.readSetting(group, "Rotation", "0"))
+        self.sliderforRotation.setValue(rotation)
         
-        # Load Checkbox_1: Centered Cursor Icon state (default to False if not found)
-        self.centeredIcon.setChecked(settings.value("Checkbox_CenteredCursorIcon", False, type=bool))
+        # Load Checkbox: Run On Startup state (default to False if not found)
+        runOnStartup_val = app.readSetting(group, "Checkbox_runOnStartup", "false").lower() == "true"
+        self.runOnStartup.setChecked(runOnStartup_val)        
         
-        # Load Checkbox_2: Artist mode fix(For Linux) state (default to False if not found)
-        self.linuxArtistModeFixCheckbox.setChecked(settings.value("Checkbox_ArtistModeFIX", False, type=bool))
+        # Load Checkbox: Centered Cursor Icon state (default to False if not found)
+        is_centered = app.readSetting(group, "Checkbox_CenteredCursorIcon", "false").lower() == "true"
+        self.centeredIcon.setChecked(is_centered)
+        
+        # Load Checkbox: Artist mode fix(For Linux) state (default to False if not found)
+        artist_mode_fix = app.readSetting(group,"Checkbox_ArtistModeFIX","false").lower() == "true"
+        self.linuxArtistModeFixCheckbox.setChecked(artist_mode_fix)
         
         # Load selected index for QListView (if no saved setting is found -1 --> set the 1st item as selected icon)
-        selected_index = settings.value("SelectedIcon", -1, type=int)    
+        selected_index = int(app.readSetting(group,"SelectedIcon", "-1"))
+        
         if selected_index != -1:
             self.iconView.setCurrentIndex(self.iconView.model().index(selected_index, 0))    #(row,coloumn) 
         else:
             self.iconView.setCurrentIndex(self.iconView.model().index(0, 0))    #(row,coloumn) == 0,0 so select the first icon in the model
         
         return selected_index
+    
+    
 
+    def setup(self):
+        # Get the notifier instance
+        self.notifier = Krita.instance().notifier()
+    
+        # Connect the viewCreated  SIGNAL to function
+        self.notifier.viewCreated.connect(self.on_view_created)
+
+    #when a view is created --> wait a little bit for Krita to set up its internal variables --> call the next function
+    def on_view_created(self):
+        QTimer.singleShot(100,self.delayed_check)
+
+    #check if an active document is open or not because a document can exist without an available view/Canvas
+    def delayed_check(self):
+        if (self.firstRun):  # if it's the first run of the program 
+            if (isCanvasReady() and self.runOnStartup.isChecked()):    #canvas is available so we opened a document AND run on startup checkbox was checked --> manually toggle the button so as if it was clicked   
+                self.firstRun = False    #flip the firstRun bool so when a new view is created the above code won't run again
+
+                self.sliderforOpacity.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
+                self.sliderforScale.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
+                self.sliderforRotation.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
+                self.iconView.selectionModel().selectionChanged.connect(lambda: self.saveSettings())    #set up icon selection change  SIGNAL  --> save the settings 
+            
+                #set to run the saveSettings method when the checkbox state changed SIGNAL is fired
+                self.runOnStartup.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
+                self.centeredIcon.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
+                self.linuxArtistModeFixCheckbox.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
+                
+                self.buttonStatus.toggle()    #toggle the button manually via code
+            elif (isCanvasReady()):    #if the runOnStartup was not checked but a canvas is available -- > connect the SIGNAL-SLOT connections for UI elements but only on the first run
+                self.firstRun = False    #flip the firstRun bool so when a new view is created the above code won't run again
+
+                self.sliderforOpacity.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
+                self.sliderforScale.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
+                self.sliderforRotation.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
+                self.iconView.selectionModel().selectionChanged.connect(lambda: self.saveSettings())    #set up icon selection change  SIGNAL  --> save the settings 
+            
+                #set to run the saveSettings method when the checkbox state changed SIGNAL is  fired
+                self.runOnStartup.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
+                self.centeredIcon.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
+                self.linuxArtistModeFixCheckbox.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
+            else:    #if  there is no available canvas on the first run don't do anything but wait 
+               pass
+ 
+            
     def hook_core_app(self):
         """ add hook to core application. """
-        if (isDocumentOpen() >=1):
+        if (isCanvasReady()):
             QMdiArea = findQMdiArea()    #get current QMainWindow's - QMdiArea widget
 
             #connect checkBrushTool  to the brush tool SIGNALs
@@ -505,26 +676,20 @@ class customBrushCursorDocker(DockWidget):
         self.iconView.viewport().removeEventFilter(self)    #remove eventFilter from this object
         self.optionsWidget.hide()    #hide optionsWidget
         self.iconView.hide()  # hide iconView 
-        
-        #save the settings after hiding the correspoinding widgets
-        self.saveSettings()
-      
+
+
     #main plugin ON/OFF button
     #arg button's toggled value
-    #calls a group of functions to run based on the value
+    #sets up the SIGNAL-SLOT relations for UI elements to automatically save when values are changed
     def toggleState(self, checked):
-        #If we activated the button/plugin
+        #If the button is checked == True
         if checked:
             self.buttonStatus.setText('Deactivate')    #set the text on the button to "Deactivate"
-            self.create_directory()    #create directory for the images if it doesn't exist already
-            self.initIconView_list()    #initialize iconView list based on files found in folder
-            #load in the settings before showing the correspoinding widgets
-            self.loadedSetting_selectedIndex = self.loadSettings()    #here we save the return value of loadSettings method which is a selected index
             self.createCustomCursorFromModel_Item()    #then we create the custom cursor based on the loaded settings
-            self.hook_core_app()   #then show the widgets
+            self.hook_core_app()   #install eventFilters then show the widgets
         else:
             self.buttonStatus.setText('Activate')    #set the text on the button to "Activate"
-            self.release_core_app() 
+            self.release_core_app()     #then disconnect all the SIGNAL and SLOTS,remove eventFilters then hide the widgets
         
     #creates directory to store the custom cursor icons
     #arg
@@ -751,7 +916,7 @@ class customBrushCursorDocker(DockWidget):
                             model.appendRow(item)
                 self.iconView.setModel(model)
                 self.iconView.viewport().update()
-                                         
+                         
     def createCustomCursorFromModel_Item(self):
          #get Item based on the loaded settings:
          # if it's NOT -1 then get the corresponding item from the model and use it to create the cursor
@@ -855,7 +1020,7 @@ class customBrushCursorDocker(DockWidget):
                 if (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() or KritaShape_KisToolDynamicBrush.isChecked() ):    #check if a brush tool is currently selected
                     q_app.restoreOverrideCursor()
                     self.isCustomCursorApplied = False #set the cursor status tracking var to False
-                else:    #no brust tool is selected in the time of leave event, unset Cursor on OpenGLWidget
+                else:    #no brush tool is selected in the time of leave event, unset Cursor on OpenGLWidget
                     q_app.restoreOverrideCursor()
                     self.isCustomCursorApplied = False
         
@@ -920,6 +1085,7 @@ class customBrushCursorDocker(DockWidget):
         pass
         
 #add the dock widget to krita instance
+Krita.instance().addExtension(DockerUISettingsManager(Krita.instance()))
 Krita.instance().addDockWidgetFactory(DockWidgetFactory("customBrushCursorDocker", DockWidgetFactoryBase.DockRight, customBrushCursorDocker))
 
 
