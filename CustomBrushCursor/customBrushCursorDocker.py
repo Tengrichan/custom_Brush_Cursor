@@ -137,8 +137,6 @@ class DockerUISettingsManager(Extension):
     def createActions(self, window):
         pass
 
-
-
             
 class customBrushCursorDocker(DockWidget):
 
@@ -179,6 +177,9 @@ class customBrushCursorDocker(DockWidget):
         # We use a helper to find the manager instance
         self.manager = DockerUISettingsManager.instance
         self.manager.syncSignal.connect(self.update_ui_from_sync)
+
+        # Define brush tools
+        self.brush_tools = ["KritaShape/KisToolBrush", "KritaShape/KisToolMultiBrush", "KritaShape/KisToolLazyBrush", "KritaShape/KisToolDyna"]
         
         #GUI init
         self.initGUI()
@@ -224,6 +225,12 @@ class customBrushCursorDocker(DockWidget):
     def triggerSave(self):
         """Restarts the timer every time it's called."""
         self.saveTimer.start()
+
+
+    #get the window the plugin belongs to
+    def get_plugins_window(self):
+        """Finds the specific MainWindow this Docker is sitting in."""
+        return self.window()  # QWidget method that returns the top-level window
 
 
     #scales the picture to size and returns with a pixmap
@@ -1006,7 +1013,9 @@ class customBrushCursorDocker(DockWidget):
                     if (self.isCustomCursorApplied == True):    #brush tool button is selected but custom cursor is already applied
                         pass
                 else:    #brush tool button was NOT selected
-                    q_app.restoreOverrideCursor()
+                    #q_app.restoreOverrideCursor()
+                    while q_app.overrideCursor():
+                        q_app.restoreOverrideCursor()
                     self.isCustomCursorApplied = False
             else:    #if  qwindow or qmdiarea is a nullptr do nothing
                 pass
@@ -1018,10 +1027,14 @@ class customBrushCursorDocker(DockWidget):
                 KritaShape_KisToolLazyBrush = q_win.findChild(QToolButton,"KritaShape/KisToolLazyBrush")
                 KritaShape_KisToolDynamicBrush = q_win.findChild(QToolButton,"KritaShape/KisToolDyna")
                 if (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() or KritaShape_KisToolDynamicBrush.isChecked() ):    #check if a brush tool is currently selected
-                    q_app.restoreOverrideCursor()
+                    #q_app.restoreOverrideCursor()
+                    while q_app.overrideCursor():
+                        q_app.restoreOverrideCursor()
                     self.isCustomCursorApplied = False #set the cursor status tracking var to False
                 else:    #no brush tool is selected in the time of leave event, unset Cursor on OpenGLWidget
-                    q_app.restoreOverrideCursor()
+                    #q_app.restoreOverrideCursor()
+                    while q_app.overrideCursor():
+                        q_app.restoreOverrideCursor()
                     self.isCustomCursorApplied = False
         
         #toggled ON event handling
@@ -1055,12 +1068,16 @@ class customBrushCursorDocker(DockWidget):
                 KritaShape_KisToolLazyBrush = q_win.findChild(QToolButton,"KritaShape/KisToolLazyBrush")
                 KritaShape_KisToolDynamicBrush = q_win.findChild(QToolButton,"KritaShape/KisToolDyna")
                 if (not KritaShape_KisToolBrush.isChecked() or  not KritaShape_KisToolMultiBrush.isChecked() or not KritaShape_KisToolLazyBrush.isChecked() or not KritaShape_KisToolDynamicBrush.isChecked() ):    #check if a brush tool is currently selected or not
-                    q_app.restoreOverrideCursor()    #restore default cursor if a non-brush tool is selected 
+                    #q_app.restoreOverrideCursor()    #restore default cursor if a non-brush tool is selected 
+                    while q_app.overrideCursor():
+                        q_app.restoreOverrideCursor()
                     self.isCustomCursorApplied = False #set the cursor status tracking var to false
                 else:
                     pass    #if we switched from one brush tool to another do nothing
             else:    #if event happened outside of the area restore cursor just in case
-                q_app.restoreOverrideCursor()    #restore default cursor if a non-brush tool is selected
+                #q_app.restoreOverrideCursor()    #restore default cursor if a non-brush tool is selected
+                while q_app.overrideCursor():
+                    q_app.restoreOverrideCursor()
                 self.isCustomCursorApplied = False #set the cursor tracking var to false
                  
             return True    #we signal that the event was handled and doesn't need to be further propagated
