@@ -60,6 +60,8 @@ import stat
 import math
 import random
 
+import inspect
+
 from pathlib import Path #module to handle paths
 
 def findQMdiArea():
@@ -279,11 +281,14 @@ class customBrushCursorDocker(DockWidget):
         pixmap_height = scaled_pixmap.height()   #get the scaled pixmap height for calculation
         
         #4 sections depending on the rotation value in degrees
-        #0-90 --> x:constant = 1 y: changes
+        #1-90 --> x:constant = 1 y: changes
         #91 - 180 --> x:changes y:constant = 1
         #181 - 270 --> x: constant = bounding box width - 1 y:changes
         #271 - 360 --> x:changes y:constant = bounding box height  - 1
+        #0 & 360 --> no rotation applied
         
+        #>>> 1 - 90 <<<#
+        #cos(1) - cos(90)
         if (rotation > 0 and rotation <= 90):
            angle_rad = math.radians(rotation)    #rotation degrees translated to radians
            rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
@@ -297,6 +302,9 @@ class customBrushCursorDocker(DockWidget):
                result_Y = int(math.cos(rounded_radianValue) * pixmap_height) + 1
              
            result_X = 1  
+################################################################################################################################           
+        #>>> 91 - 180 <<<#
+        #sin(1) - sin(90)
         elif (rotation > 90 and rotation <= 180):
            adjustedDegree = rotation - 90    #we adjust the degree as if it was doine in a 0-90 section
            angle_rad = math.radians(adjustedDegree)
@@ -311,6 +319,9 @@ class customBrushCursorDocker(DockWidget):
                result_X = int(math.sin(rounded_radianValue) * pixmap_width) + 1
             
            result_Y = 1  
+################################################################################################################################           
+        #>>> 181 -  270 <<<# 
+        #sin(1) - sin(90)  
         elif (rotation > 180 and rotation <= 270):
             adjustedDegree = rotation - 180    #we adjust the degree as if it was doine in a 0-90 section
             angle_rad = math.radians(adjustedDegree)
@@ -325,6 +336,10 @@ class customBrushCursorDocker(DockWidget):
                 result_Y = int(math.sin(rounded_radianValue) * pixmap_width) + 1
                
             result_X = transformed_pixmap.width() - 1    #the X coordinate is gonna be the bounding rectangle's width - 1 adjusted because of the brush picture  
+            
+################################################################################################################################            
+        #>>> 271 -  359 <<<#
+        #cos(1) - cos(90)
         elif (rotation > 270 and rotation < 360):
             adjustedDegree = rotation - 270    #we adjust the degree as if it was doine in a 0-90 section
             angle_rad = math.radians(adjustedDegree)
@@ -339,17 +354,210 @@ class customBrushCursorDocker(DockWidget):
                 result_X = int(math.cos(rounded_radianValue) * pixmap_height) + 1
  
             result_Y = transformed_pixmap.height() - 1
+            
+################################################################################################################################            
+        #>>>  0 &  360 <<<#
         elif (rotation == 360 or rotation == 0):    #no rotation is done 
             result_X = 1
             result_Y = pixmap_height - 1
 
         return (result_X,result_Y)
 
+
+    #calculates the new hotspot after the rotation for a centered icon
+    #arg scaled_pixmap,transformed_pixmap,rotation in degrees
+    #return an (int,int)  tuple
+    def calculateCursorHotspot_centeredIcon(self,scaled_pixmap,transformed_pixmap,rotation):
+
+        pixmap_width = scaled_pixmap.width()    #get the scaled pixmap width for calculation
+        pixmap_height = scaled_pixmap.height()   #get the scaled pixmap height for calculation
+        
+        #4 sections depending on the rotation value in degrees
+        #0-90 --> x:constant = 1 y: changes
+        #91 - 180 --> x:changes y:constant = 1
+        #181 - 270 --> x: constant = bounding box width - 1 y:changes
+        #271 - 360 --> x:changes y:constant = bounding box height  - 1
+        #0 & 360 --> no rotation applied
+        
+        pointA = (0,0)
+        pointB = (0,0)
+        pointResult = (0,0)
+    
+        #>>> 1 - 90 <<<#
+        #cos(1) - cos(90)
+        if (rotation > 0 and rotation <= 90):
+           angle_rad = math.radians(rotation)    #rotation degrees translated to radians
+           rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
+
+           float_tempY = math.cos(rounded_radianValue) * pixmap_height    #get result in float type
+           fractional_part, integer_part = math.modf(float_tempY)    #get the two part of the floating number 
+           result_Y = 0
+           if (fractional_part < 0.5 ):    #if fractional part is less than 0.5 round down the floating number 
+               result_Y = int(math.cos(rounded_radianValue) * pixmap_height)
+           else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part  thus rounds it down regardless 
+               result_Y = int(math.cos(rounded_radianValue) * pixmap_height) + 1
+             
+           result_X = 1  
+           ##########
+           pointA = (result_X,result_Y)
+           ##########
+
+           #in case of  0-90 we need the opposite point  as if it was 181-270 rotation
+           #sin(1) - sin(90)
+           adjustedDegree = rotation    #we adjust the degree as if it was done in a 0-90 section
+           angle_rad = math.radians(adjustedDegree)
+           rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
+            
+           float_tempY = math.sin(rounded_radianValue) * pixmap_width    #get result in float type
+           fractional_part, integer_part = math.modf(float_tempY)    #get the two part of the floating number 
+           result_Y = 0
+           if (fractional_part < 0.5 ):    #if fractional part is less than 0.5 round down the floating number 
+               result_Y = int(math.sin(rounded_radianValue) * pixmap_width)
+           else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part 
+               result_Y = int(math.sin(rounded_radianValue) * pixmap_width) + 1
+               
+           result_X = transformed_pixmap.width() - 1    #the X coordinate is gonna be the bounding rectangle's width - 1 adjusted because of the brush picture  
+           ########## 
+           pointB = (result_X,result_Y)
+           pointResult = ((pointA[0] + pointB[0]) / 2 , (pointA[1] + pointB[1]) / 2)
+           ########## 
+################################################################################################################################
+        #>>> 91 - 180 <<<#
+        #sin(1) - sin(90)
+        elif (rotation > 90 and rotation <= 180):
+           adjustedDegree = rotation - 90    #we adjust the degree as if it was done in a 0-90 section
+           angle_rad = math.radians(adjustedDegree)
+           rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
+           
+           float_tempX = math.sin(rounded_radianValue) * pixmap_width
+           fractional_part, integer_part = math.modf(float_tempX)
+           result_X = 0
+           if (fractional_part < 0.5 ):    #if fractiona part is less than 0.5 round down the floating number 
+               result_X = int(math.sin(rounded_radianValue) * pixmap_width)
+           else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part 
+               result_X = int(math.sin(rounded_radianValue) * pixmap_width) + 1
+            
+           result_Y = 1  
+           ##########
+           pointA = (result_X,result_Y)
+           ########## 
+           
+           #in case of  91-180 we need the opposite point  as if it was 271-359 rotation 
+           #cos(1) - cos(90)
+           adjustedDegree = rotation - 90   #we adjust the degree as if it was done in a 0-90 section
+           angle_rad = math.radians(adjustedDegree)
+           rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
+            
+           float_tempY = math.cos(rounded_radianValue) * pixmap_height    #get result in float type
+           fractional_part, integer_part = math.modf(float_tempY)    #get the two part of the floating number 
+           result_X = 0
+           if (fractional_part < 0.5 ):    #if fractional part is less than 0.5 round down the floating number 
+               result_X = int(math.cos(rounded_radianValue) * pixmap_height)
+           else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part 
+               result_X = int(math.cos(rounded_radianValue) * pixmap_height) + 1
+ 
+           result_Y = transformed_pixmap.height() - 1
+           ##########
+           pointB = (result_X,result_Y)
+           pointResult = ((pointA[0] + pointB[0]) / 2 , (pointA[1] + pointB[1]) / 2)
+           ##########           
+################################################################################################################################
+        #>>> 181 -  270 <<<#
+        #sin(1) - sin(90)
+        elif (rotation > 180 and rotation <= 270):
+            adjustedDegree = rotation  - 180 #we adjust the degree as if it was done in a 0-90 section
+            angle_rad = math.radians(adjustedDegree)
+            rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
+            
+            float_tempY = math.sin(rounded_radianValue) * pixmap_width    #get result in float type
+            fractional_part, integer_part = math.modf(float_tempY)    #get the two part of the floating number 
+            result_Y = 0
+
+            if (fractional_part < 0.5 ):    #if fractional part is less than 0.5 round down the floating number 
+                result_Y = int(math.sin(rounded_radianValue) * pixmap_width)
+            else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part 
+                result_Y = int(math.sin(rounded_radianValue) * pixmap_width) + 1
+               
+            result_X = transformed_pixmap.width() - 1    #the X coordinate is gonna be the bounding rectangle's width - 1 adjusted because of the brush picture  
+            ##########
+            pointA = (result_X,result_Y)
+            ##########
+            
+            #in case of  181-270 we need the opposite point  as if it was 1- 90 rotation
+            #cos(1) - cos(90)
+            adjustedDegree = rotation  - 180
+            angle_rad = math.radians(adjustedDegree)   #rotation degrees translated to radians
+            rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
+
+            float_tempY = math.cos(rounded_radianValue) * pixmap_height    #get result in float type
+            fractional_part, integer_part = math.modf(float_tempY)    #get the two part of the floating number 
+            result_Y = 0
+            if (fractional_part < 0.5 ):    #if fractional part is less than 0.5 round down the floating number 
+                result_Y = int(math.cos(rounded_radianValue) * pixmap_height)
+            else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part  thus rounds it down regardless 
+                result_Y = int(math.cos(rounded_radianValue) * pixmap_height) + 1
+             
+            result_X = 1 
+            ########## 
+            pointB = (result_X,result_Y)
+            pointResult = ((pointA[0] + pointB[0]) / 2 , (pointA[1] + pointB[1]) / 2)
+            ##########
+################################################################################################################################
+        #>>> 271 -  359 <<<#
+        #cos(1) - cos(90)
+        elif (rotation > 270 and rotation < 360):
+            adjustedDegree = rotation - 270    #we adjust the degree as if it was done in a 0-90 section
+            angle_rad = math.radians(adjustedDegree)
+            rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
+            
+            float_tempY = math.cos(rounded_radianValue) * pixmap_height    #get result in float type
+            fractional_part, integer_part = math.modf(float_tempY)    #get the two part of the floating number 
+            result_X = 0
+            if (fractional_part < 0.5 ):    #if fractional part is less than 0.5 round down the floating number 
+                result_X = int(math.cos(rounded_radianValue) * pixmap_height)
+            else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part 
+                result_X = int(math.cos(rounded_radianValue) * pixmap_height) + 1
+ 
+            result_Y = transformed_pixmap.height() - 1
+            ##########
+            pointA = (result_X,result_Y)
+            self.dbgWindow.append_to_end(f'centeredIcon_pointA: pointA_X : {pointA[0]}  ,   pointA_Y : {pointA[1]}\n')
+            ##########
+            #in case of  270-360 we need the opposite point  as if it was 270-360 rotation
+            
+            adjustedDegree = rotation - 270    #we adjust the degree as if it was done in a 0-90 section
+            angle_rad = math.radians(adjustedDegree)
+            rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
+           
+            float_tempX = math.sin(rounded_radianValue) * pixmap_width
+            fractional_part, integer_part = math.modf(float_tempX)
+            result_X = 0
+            if (fractional_part < 0.5 ):    #if fractiona part is less than 0.5 round down the floating number 
+                result_X = int(math.sin(rounded_radianValue) * pixmap_width)
+            else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part 
+                result_X = int(math.sin(rounded_radianValue) * pixmap_width) + 1
+            
+            result_Y = 1
+            ##########  
+            pointB = (result_X,result_Y)
+            
+            self.dbgWindow.append_to_end(f'centeredIcon_pointB: pointB_X : {pointB[0]}  ,   pointB_Y : {pointB[1]}\n')
+            pointResult = ((pointA[0] + pointB[0]) / 2 , (pointA[1] + pointB[1]) / 2)
+            ##########
+            self.dbgWindow.append_to_end(f'centeredIcon_pointRESULT: pointResult_X : {pointResult[0]}  ,   pointResult_Y : {pointResult[1]}\n') 
+################################################################################################################################            
+        #>>>  0 &  360 <<<#
+        elif (rotation == 360 or rotation == 0):    #no rotation is done 
+            ##########
+            pointResult = ( pixmap_width / 2 , pixmap_height / 2 - 1)
+            ##########
+        return (int(pointResult[0]),int(pointResult[1]))
+
     #creates the custom cursor
     # first we scale the pixmap,change its opacity then  rotate around Z axis 
     #arg pixmap,scale,opacity,rotation,crosshair_bool,linuxFIX_bool
     #return QCursor
-    def createCustomCursor(self,pixmap,scale,opacity,rotation,crosshair,linuxArtistModeFix):       
+    def createCustomCursor(self,pixmap,scale,opacity,rotation,centeredIcon,linuxArtistModeFix):       
        
         scaled_pixmap = self.pixmapScale(pixmap,scale)      #scale the pixmap with input scale value 
         scaled_pixmap = self.changeOpacity(scaled_pixmap,opacity)       #change the opacity of the already scaled pixmap with opacity
@@ -360,21 +568,26 @@ class customBrushCursorDocker(DockWidget):
         transformed_pixmap = scaled_pixmap.transformed(transform)    #this rotates around Z axis
         
         #tuple containing the new (X,Y) values for cursor hotspot
-        newhotspot = self.calculateCursorHotspot(scaled_pixmap,transformed_pixmap,rotation)          
+        newhotspot = self.calculateCursorHotspot(scaled_pixmap,transformed_pixmap,rotation)         
         #check whether the orientation of the cursor icon is centered like a crosshair or not
         #if it's centered then use a different offset
         if linuxArtistModeFix:
-            qCursor = QCursor(scaled_pixmap,0,-int(scaled_pixmap.height()/2) + 1 )
-            if crosshair:
-                qCursor = QCursor(scaled_pixmap,int(scaled_pixmap.width()/4),int(scaled_pixmap.height()/4) + 1)
+            linuxArtistModeFix_newhotspot0 = 0
+            linuxArtistModeFix_newhotspot1 = -int(scaled_pixmap.height()/2) + 1
+            
+            #qCursor = QCursor(scaled_pixmap,0,-int(scaled_pixmap.height()/2) + 1 )
+            qCursor = QCursor(transformed_pixmap,linuxArtistModeFix_newhotspot0,linuxArtistModeFix_newhotspot1 )
+            if centeredIcon:
+                #qCursor = QCursor(scaled_pixmap,int(scaled_pixmap.width()/4),int(scaled_pixmap.height()/4) + 1)
+                qCursor = QCursor(transformed_pixmap, int(scaled_pixmap.width()/4), int(scaled_pixmap.height()/4) + 1)
                 # qCursor = QCursor(scaled_pixmap,int(int(scaled_pixmap.height())*1.5),0)
             # else:
                 # qCursor = QCursor(transformed_pixmap,newhotspot[0],-newhotspot[1])     #create a cursor object from scaledImage and set its coordinates 
         else:
-            if crosshair:
-                qCursor = QCursor(scaled_pixmap,int(scaled_pixmap.width()/2),int(scaled_pixmap.height()/2) + 1 )
+            if centeredIcon:              
+                newhotspot_centeredIcon = self.calculateCursorHotspot_centeredIcon (scaled_pixmap,transformed_pixmap,rotation)
+                qCursor = QCursor(transformed_pixmap,newhotspot_centeredIcon[0] , newhotspot_centeredIcon[1] )
             else:
-                #qCursor = QCursor(transformed_pixmap,1,transformed_pixmap.height() - 1)     #create a cursor object from scaledImage and set its coordinates X=0 and Y=move the image up by its height because its orientation
                 qCursor = QCursor(transformed_pixmap,newhotspot[0],newhotspot[1])     #create a cursor object from scaledImage and set its coordinates 
         return  qCursor	
     
@@ -788,7 +1001,9 @@ class customBrushCursorDocker(DockWidget):
             else:
                 pass
 
-           
+    #update cursor rotation
+    #arg cursorRotation value
+    #creates an updated customCursor with new rotation       
     def update_cursorRotation(self,value):
         # Update the label with the current scale
         self.labelforRotation.setText(f"Rotation(in degrees): {value}")
@@ -797,9 +1012,11 @@ class customBrushCursorDocker(DockWidget):
         opacity = self.sliderforOpacity.value() / 100.0
 
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,value,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create new cursor with the changed scale based on static cursor
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,value,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create new cursor with the changed rotation based on static cursor
         else:
             pass
+
+
    #after creating the directory for the cursor images make it writeable for current USER
    #arg directory
    #tries to make the directory writeable for file copy operation
@@ -984,6 +1201,7 @@ class customBrushCursorDocker(DockWidget):
             self.staticCustomCursor = QCursor()    #reset the cursors
             self.customCursor = QCursor()  
     
+
     #function to check if a brush tool was turned on or off then send a custom EVENT based on the bool value
     def checkBrushTool(self,checked):    
         if (checked):    #one of the buttons EMITTED a toggled SIGNAL and it was true so one of them was turned ON
