@@ -60,8 +60,6 @@ import stat
 import math
 import random
 
-import inspect
-
 from pathlib import Path #module to handle paths
 
 def findQMdiArea():
@@ -126,7 +124,7 @@ class BrushToggledOFFEvent(QEvent):
 class DockerUISettingsManager(Extension):
     instance = None
     # This signal sends the key name and the new value
-    syncSignal = pyqtSignal(str, object)
+    syncSignal = pyqtSignal(str, object, str)
 
     def __init__(self,parent):
         super().__init__(parent)
@@ -179,48 +177,63 @@ class customBrushCursorDocker(DockWidget):
         # We use a helper to find the manager instance
         self.manager = DockerUISettingsManager.instance
         self.manager.syncSignal.connect(self.update_ui_from_sync)
+        self.is_syncing = False
 
         # Define brush tools
         self.brush_tools = ["KritaShape/KisToolBrush", "KritaShape/KisToolMultiBrush", "KritaShape/KisToolLazyBrush", "KritaShape/KisToolDyna"]
         
+        
         #GUI init
         self.initGUI()
 
+            
         self.create_directory()    #create directory for the images if it doesn't exist already
         self.initIconView_list()    #initialize iconView list based on files found in folder
-
+        
         #load in settings to check whether runOnStartup is true or false
         #the logic is done here so the variables get a value in time for checks 
-        self.loadedSetting_selectedIndex = self.loadSettings()    #roundabout way to load in settings because the method returns with an int but the rest of the variables are assigned a value as well
-        
+        #self.loadedSetting_selectedIndex = self.loadSettings()    #roundabout way to load in settings because the method returns with an int but the rest of the variables are assigned a value as well
+        self.loadedIndex = -1 #default value of index 
+        self.loadSettings()    #load in the saved settings if any
         self.setup()
         
     
     
-    def update_ui_from_sync(self, key, value):
+    def update_ui_from_sync(self, key, value,sender_id):
         # We block signals so we don't trigger an infinite loop
-        self.blockSignals(True)
-        if key == "Opacity":
-            self.sliderforOpacity.setValue(int(value))
-        elif key == "Scale":
-            self.sliderforScale.setValue(int(value))
-        elif key == "Rotation":
-            self.sliderforRotation.setValue(int(value))
-        elif key == "runOnStartupCheckbox":
-            self.runOnStartup.setChecked(bool(value))
-        elif key == "centeredIconCheckbox":
-            self.centeredIcon.setChecked(bool(value))
-        elif key == "linuxArtistModeFixCheckbox":
-            self.linuxArtistModeFixCheckbox.setChecked(bool(value))
-        elif key == "SelectedIcon":
-            #selected_indices = self.iconView.selectionModel().selectedIndexes()
-            #row_to_save = selected_indices[0].row()
-            index = self.iconView.model().index(int(value), 0)
-            self.iconView.setCurrentIndex(index)
-            self.on_icon_clicked(index)
-            # ... update other widgets ...
-            self.blockSignals(False)    
-    
+        #self.dbgWindow.append_to_end(f'WINDOW-ID (self) : {str(id(self))}\n')
+        #self.dbgWindow.append_to_end(f'SENDER WINDOW-ID : {str(sender_id)}\n')
+        if str(sender_id) == str(id(self)):
+            #self.dbgWindow.append_to_end(f'Sender WINDOW-ID (self,gonna return) : {str(sender_id)}\n')
+            return # if the signal came from the "main" window --> ignore it
+            
+        # CLOSE THE GATE: in sync mode, don't signals back to the manager 
+        self.is_syncing = True   
+        #self.iconView.selectionModel().blockSignals(True)
+
+        try:
+            if key == "Opacity":
+                self.sliderforOpacity.setValue(int(value))
+            elif key == "Scale":
+                self.sliderforScale.setValue(int(value))
+            elif key == "Rotation":
+                self.sliderforRotation.setValue(int(value))
+            elif key == "runOnStartupCheckbox":
+                self.runOnStartup.setChecked(bool(value))
+            elif key == "centeredIconCheckbox":
+                self.centeredIcon.setChecked(bool(value))
+            elif key == "linuxArtistModeFixCheckbox":
+                self.linuxArtistModeFixCheckbox.setChecked(bool(value))
+            elif key == "SelectedIcon":
+
+                #self.dbgWindow.append_to_end(f'update_ui_sync_SelectedIcon: {value}\n')
+                row = int(value)
+                column = 0
+                self.syncIconViewport(row, column)
+        #self.iconView.selectionModel().blockSignals(False)    
+        finally:
+            # OPEN THE GATE: syncing finished,clicks should now be broadcasted
+            self.is_syncing = False
     
     #Timer function to trigger save of settings 
     #it will be called when any of the plugin settings are changed so it needs to be connected to the settings 
@@ -521,7 +534,7 @@ class customBrushCursorDocker(DockWidget):
             result_Y = transformed_pixmap.height() - 1
             ##########
             pointA = (result_X,result_Y)
-            self.dbgWindow.append_to_end(f'centeredIcon_pointA: pointA_X : {pointA[0]}  ,   pointA_Y : {pointA[1]}\n')
+            #self.dbgWindow.append_to_end(f'centeredIcon_pointA: pointA_X : {pointA[0]}  ,   pointA_Y : {pointA[1]}\n')
             ##########
             #in case of  270-360 we need the opposite point  as if it was 270-360 rotation
             
@@ -541,10 +554,10 @@ class customBrushCursorDocker(DockWidget):
             ##########  
             pointB = (result_X,result_Y)
             
-            self.dbgWindow.append_to_end(f'centeredIcon_pointB: pointB_X : {pointB[0]}  ,   pointB_Y : {pointB[1]}\n')
+            #self.dbgWindow.append_to_end(f'centeredIcon_pointB: pointB_X : {pointB[0]}  ,   pointB_Y : {pointB[1]}\n')
             pointResult = ((pointA[0] + pointB[0]) / 2 , (pointA[1] + pointB[1]) / 2)
             ##########
-            self.dbgWindow.append_to_end(f'centeredIcon_pointRESULT: pointResult_X : {pointResult[0]}  ,   pointResult_Y : {pointResult[1]}\n') 
+            #self.dbgWindow.append_to_end(f'centeredIcon_pointRESULT: pointResult_X : {pointResult[0]}  ,   pointResult_Y : {pointResult[1]}\n') 
 ################################################################################################################################            
         #>>>  0 &  360 <<<#
         elif (rotation == 360 or rotation == 0):    #no rotation is done 
@@ -626,7 +639,6 @@ class customBrushCursorDocker(DockWidget):
         self.sliderforOpacity.setRange(0, 100)
         self.sliderforOpacity.setValue(50)
         self.sliderforOpacity.valueChanged.connect(self.update_cursorOpacity)
-        self.sliderforOpacity.valueChanged.connect(lambda val: self.manager.syncSignal.emit("Opacity",val))    #when slider value changes send out a signal to Extension so other dockers can be updated
         optionsLayout.addWidget(self.labelforOpacity)
         optionsLayout.addWidget(self.sliderforOpacity)
 
@@ -638,7 +650,6 @@ class customBrushCursorDocker(DockWidget):
         self.sliderforScale.setPageStep(1)
         self.sliderforScale.setValue(0)
         self.sliderforScale.valueChanged.connect(self.update_cursorScale)
-        self.sliderforScale.valueChanged.connect(lambda val: self.manager.syncSignal.emit("Scale",val))    #when slider value changes send out a signal to Extension so other dockers can be updated
         optionsLayout.addWidget(self.labelforScale)
         optionsLayout.addWidget(self.sliderforScale)
 
@@ -660,21 +671,17 @@ class customBrushCursorDocker(DockWidget):
         self.sliderforRotation.setRange(0, 360)
         self.sliderforRotation.setValue(0)
         self.sliderforRotation.valueChanged.connect(self.update_cursorRotation)
-        self.sliderforRotation.valueChanged.connect(lambda val: self.manager.syncSignal.emit("Rotation",val))    #when slider value changes send out a signal to Extension so other dockers can be updated
         optionsLayout.addWidget(self.labelforRotation)
         optionsLayout.addWidget(self.sliderforRotation)
 
         # Checkboxes
         self.runOnStartup = QCheckBox("Run on startup")
-        self.runOnStartup.stateChanged.connect(lambda checked: self.manager.syncSignal.emit("runOnStartupCheckbox",checked))    #when checkbox state changes send out a signal to Extension so other dockers can be updated
         
         self.centeredIcon = QCheckBox("Centered cursor icon")
         self.centeredIcon.stateChanged.connect(self.centerHotspot)
-        self.centeredIcon.stateChanged.connect(lambda checked: self.manager.syncSignal.emit("centeredIconCheckbox",checked))    #whencheckbox state changes send out a signal to Extension so other dockers can be updated
         
         self.linuxArtistModeFixCheckbox = QCheckBox("(For Linux) Artist mode fix")
         self.linuxArtistModeFixCheckbox.stateChanged.connect(self.linuxArtistModeFix)
-        self.linuxArtistModeFixCheckbox.stateChanged.connect(lambda checked: self.manager.syncSignal.emit("linuxArtistModeFixCheckbox",checked))    #when checkbox state changes send out a signal to Extension so other dockers can be updated
         
         optionsLayout.addWidget(self.runOnStartup, alignment=Qt.AlignTop | Qt.AlignHCenter)
         optionsLayout.addWidget(self.centeredIcon, alignment=Qt.AlignTop | Qt.AlignHCenter)
@@ -697,12 +704,9 @@ class customBrushCursorDocker(DockWidget):
         self.iconView.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)    #set dynamic scrollbars based on size
         self.iconView.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.iconView.setEditTriggers(QAbstractItemView.NoEditTriggers)    #remove the ability to edit the icons and related part in any way
-        self.iconView.setStyleSheet("QListView::item:selected { border: 1px solid rgba(100, 149, 237, 1); background: rgba(100, 149, 237, 0.2); }")    #use "cornflowerblue" as highlight colour for border and background colour
-        self.iconView.clicked.connect(self.on_icon_clicked)  # Add click handler 
-        self.iconView.clicked.connect(lambda: self.manager.syncSignal.emit("SelectedIcon" , self.iconView.currentIndex().row())) #when iconView icon changes send out a signal to Extension so other dockers can be updated
-
+        self.iconView.setStyleSheet("QListView::item:selected { border: 1px solid rgba(100, 149, 237, 1); background: rgba(100, 149, 237, 0.2); }")    #use "cornflowerblue" as highlight colour for border and background colour       
+        
         layout.addWidget(self.iconView, stretch=1)    #allow iconView to expand
-
         # Hide options and iconView by default
         self.optionsWidget.hide()
         self.iconView.hide() 
@@ -752,10 +756,13 @@ class customBrushCursorDocker(DockWidget):
         app.writeSetting(group, "Checkbox_ArtistModeFIX", str(self.linuxArtistModeFixCheckbox.isChecked()))
 
         # Save QListView selection
-        selected_indices = self.iconView.selectionModel().selectedIndexes()
-        row_to_save = selected_indices[0].row()
-        if selected_indices:
-             app.writeSetting(group, "SelectedIcon", str(row_to_save))    #get the list's first entry and save its row attribute
+        selected_index = 0
+        row_to_save = 0
+
+        selected_index = self.iconView.selectionModel().currentIndex()        
+        if (selected_index and not (selected_index.row() == -1)):    #if there is a valid index 
+             app.writeSetting(group, "SelectedIcon", str(selected_index.row()))    #get the list's first entry and save its row attribute
+             #self.dbgWindow.append_to_end(f'row_to_save:{selected_index.row()}\n')
         else:
              app.writeSetting(group, "SelectedIcon", str(-1))               # No selection
        
@@ -765,11 +772,10 @@ class customBrushCursorDocker(DockWidget):
         if self.saveTimer.isActive():
             self.saveTimer.stop()
             self.saveSettings()    #Force the save now   
-            
-            
+                  
     #loads saved settings 
     #arg
-    #return selected_index which is used to create the cursor        
+    #return    
     def loadSettings(self):
         group = "customBrushCursorDocker"
         app = Krita.instance()
@@ -800,17 +806,14 @@ class customBrushCursorDocker(DockWidget):
         artist_mode_fix = app.readSetting(group,"Checkbox_ArtistModeFIX","false").lower() == "true"
         self.linuxArtistModeFixCheckbox.setChecked(artist_mode_fix)
         
-        # Load selected index for QListView (if no saved setting is found -1 --> set the 1st item as selected icon)
-        selected_index = int(app.readSetting(group,"SelectedIcon", "-1"))
-        
-        if selected_index != -1:
-            self.iconView.setCurrentIndex(self.iconView.model().index(selected_index, 0))    #(row,coloumn) 
-        else:
-            self.iconView.setCurrentIndex(self.iconView.model().index(0, 0))    #(row,coloumn) == 0,0 so select the first icon in the model
-        
-        return selected_index
-    
-    
+        # Load selected index for QListView (if no saved setting is found -1 --> set the 1st item as selected icon by default but check if there are items in the model)
+        self.loadedIndex = int(app.readSetting(group,"SelectedIcon", "-1"))
+        if (  not self.iconView.model() == None and self.iconView.model().hasIndex(0,0) ) :   #if there is at least one file present in the directory so a model has been created and assigned to iconView
+            if self.loadedIndex != -1:    #if there was a saved setting so the value is not the default "-1"
+                self.iconView.setCurrentIndex(self.iconView.model().index(self.loadedIndex, 0))    #set the currentIndex to the loadedIndex
+            else:    #else choose the very first item in the model's list
+                self.iconView.setCurrentIndex(self.iconView.model().index(0, 0))    #(row,coloumn) == 0,0 so select the first icon in the model
+
 
     def setup(self):
         # Get the notifier instance
@@ -818,7 +821,30 @@ class customBrushCursorDocker(DockWidget):
     
         # Connect the viewCreated  SIGNAL to function
         self.notifier.viewCreated.connect(self.on_view_created)
+        
+        if self.iconView.model().hasIndex(0,0):
+            self.sliderforOpacity.valueChanged.connect(lambda val: self.broadcast("Opacity", val))
+            self.sliderforScale.valueChanged.connect(lambda val: self.broadcast("Scale", val))
+            self.sliderforRotation.valueChanged.connect(lambda val: self.broadcast("Rotation", val))
+            self.runOnStartup.stateChanged.connect(lambda checked: self.broadcast("runOnStartupCheckbox",checked))
+            self.centeredIcon.stateChanged.connect(lambda checked: self.broadcast("centeredIconCheckbox",checked))
+            self.linuxArtistModeFixCheckbox.stateChanged.connect(lambda checked: self.broadcast("linuxArtistModeFixCheckbox",checked))
 
+            self.iconView.selectionModel().currentChanged.connect(lambda current, prev: self.broadcast("SelectedIcon" , current.row()))
+            self.iconView.clicked.connect(self.on_icon_clicked)
+        else:
+            pass
+            
+                    
+    def broadcast(self, key, value):
+        #The only way out of the window. Checks the gate first.
+        if self.is_syncing:
+            #self.dbgWindow.append_to_end(f"Gate blocked broadcast for: {key}\n")
+            return
+        
+        self.manager.syncSignal.emit(str(key), value, str(id(self)))
+    
+       
     #when a view is created --> wait a little bit for Krita to set up its internal variables --> call the next function
     def on_view_created(self):
         QTimer.singleShot(100,self.delayed_check)
@@ -832,13 +858,15 @@ class customBrushCursorDocker(DockWidget):
                 self.sliderforOpacity.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
                 self.sliderforScale.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
                 self.sliderforRotation.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
-                self.iconView.selectionModel().selectionChanged.connect(lambda: self.saveSettings())    #set up icon selection change  SIGNAL  --> save the settings 
+                if (self.iconView.model().hasChildren()):    #if the iconView model has items
+                    self.iconView.selectionModel().selectionChanged.connect(lambda: self.saveSettings(), Qt.UniqueConnection)    #set up icon selection change  SIGNAL  --> save the settings 
+                else:    #else don't set up the SIGNAL---SLOT connection because it would cause an error otherwise
+                    pass
             
                 #set to run the saveSettings method when the checkbox state changed SIGNAL is fired
                 self.runOnStartup.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
                 self.centeredIcon.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
                 self.linuxArtistModeFixCheckbox.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
-                
                 self.buttonStatus.toggle()    #toggle the button manually via code
             elif (isCanvasReady()):    #if the runOnStartup was not checked but a canvas is available -- > connect the SIGNAL-SLOT connections for UI elements but only on the first run
                 self.firstRun = False    #flip the firstRun bool so when a new view is created the above code won't run again
@@ -846,7 +874,10 @@ class customBrushCursorDocker(DockWidget):
                 self.sliderforOpacity.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
                 self.sliderforScale.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
                 self.sliderforRotation.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
-                self.iconView.selectionModel().selectionChanged.connect(lambda: self.saveSettings())    #set up icon selection change  SIGNAL  --> save the settings 
+                if (self.iconView.model().hasChildren()):    #if the iconView model has items
+                    self.iconView.selectionModel().selectionChanged.connect(lambda: self.saveSettings(), Qt.UniqueConnection)    #set up icon selection change  SIGNAL  --> save the settings 
+                else:    #else don't set up the SIGNAL---SLOT connection because it would cause an error otherwise
+                    pass
             
                 #set to run the saveSettings method when the checkbox state changed SIGNAL is  fired
                 self.runOnStartup.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
@@ -905,10 +936,13 @@ class customBrushCursorDocker(DockWidget):
         #If the button is checked == True
         if checked:
             self.buttonStatus.setText('Deactivate')    #set the text on the button to "Deactivate"
+            self.loadSettings()    #when the button is activated either via the user or via code --> load the saved settings
             self.createCustomCursorFromModel_Item()    #then we create the custom cursor based on the loaded settings
             self.hook_core_app()   #install eventFilters then show the widgets
+            
         else:
             self.buttonStatus.setText('Activate')    #set the text on the button to "Activate"
+            self.saveSettings()    #when the plugin is deactivated by button press --> run a saveSettings  method just in case
             self.release_core_app()     #then disconnect all the SIGNAL and SLOTS,remove eventFilters then hide the widgets
         
     #creates directory to store the custom cursor icons
@@ -1038,7 +1072,7 @@ class customBrushCursorDocker(DockWidget):
         
         if source_file: #if the file exists and we could open it successfully
             file_name = os.path.basename(source_file[0])    #the name of the file without any "./" or "/"
-            self.dbgWindow.append_to_end("Open Image file -> file_name = \n")
+            #self.dbgWindow.append_to_end("Open Image file -> file_name = \n")
             try:
                 destination = os.path.join(self.directory_customCursorImage + QDir.separator() + file_name) #create the destination absolute path 
                 self.make_directory_writable(self.directory_customCursorImage) #make directory writable if it's not 
@@ -1060,7 +1094,6 @@ class customBrushCursorDocker(DockWidget):
                    #clear the model 
                    #then repopulate the model so the new item -> icon will be displayed at the correct index corresponding to the picture's order in the directory along other files
                     self.iconView.model().clear()
-                    model = QStandardItemModel()
                     for filename in fileList:                   
                        if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
                             filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
@@ -1070,10 +1103,14 @@ class customBrushCursorDocker(DockWidget):
                                 item = QStandardItem(icon, "")
                                 item.setData(filePath, self.filePathRole)  # Store file path
                                 item.setData(filename,self.fileNameRole)    # Store filename
-                                model.appendRow(item)
-                    self.iconView.setModel(model)
-                    self.iconView.viewport().update()
+                                self.iconView.model().appendRow(item)
+                    self.iconView.viewport().update()                  
                     
+                    #here we check for the situation when there was no image in the directory at startup
+                    #so when a new image is added we connect the saveSettings SLOT to selectionChanged SIGNAL because the model now has at least one item
+                    if (self.iconView.model().hasChildren()):    #if the iconView model has items
+                        self.iconView.selectionModel().selectionChanged.disconnect()	#disconnect any previous saveSettings connection when adding a new item
+                        self.iconView.selectionModel().selectionChanged.connect(lambda: self.saveSettings() , Qt.UniqueConnection)    #set up icon selection change  SIGNAL  --> save the settings 
                     #search for the new item based on the newly opened image file's name
                     # so we use the file_name var and search for the item in the model with a for-loop
                     # when found -> get its index then use that index to automatically select the icon in the viewport
@@ -1081,9 +1118,9 @@ class customBrushCursorDocker(DockWidget):
                         item = self.iconView.model().item(row)
                         if item.data(self.fileNameRole) == file_name:
                             index = self.iconView.model().indexFromItem(item)
-                            self.iconView.setCurrentIndex(index)
-                            self.iconView.selectionModel().select(index, QItemSelectionModel.ClearAndSelect)
-                            self.iconView.scrollTo(index)
+                            self.iconView.setCurrentIndex(index)		#considered a click event so the clicked SIGNAL will run the assigned SLOTs 
+                            self.iconView.selectionModel().select(index, QItemSelectionModel.ClearAndSelect)	#selects the item in the view and highlights it
+                            self.iconView.scrollTo(index)    #if there are too many items,this method ensures the view will show the right item 
                             break
                     
                     #when the set up is complete create the cursors
@@ -1114,16 +1151,18 @@ class customBrushCursorDocker(DockWidget):
             msgBox.setText(f" ERROR while opening file!")
             msgBox.exec() 
 
-    #initialize the iconView model with the items created based on pictures 
+    #initialize the iconView model with the items created based on pictures , this runs only once when a new window is created
     #arg 
     #return with a) nothing or b) filled model with items
     def initIconView_list(self):
         if ( os.path.isdir(self.directory_customCursorImage) ): #if the directory for customCursorImage exists
             fileList = os.listdir(self.directory_customCursorImage)	#save the number of items that are in the directory
             if not fileList :    #if filelist is empty -> no file can be found in the directory -> do nothing
+                model = QStandardItemModel()    #even if there are no files found in the directory create the model itself for error checks
                 self.staticCustomCursor = QCursor()    #reset the cursors from previous state as the file has been deleted
                 self.customCursor = QCursor()
-                pass
+                self.iconView.setModel(model)
+                self.iconView.viewport().update()
             else:    #if there is a file 
                 fileList.sort() #sort the entries                
                 #create a model --> create the items with the small icons --> add the items into the model and set this model for iconView to display
@@ -1140,68 +1179,337 @@ class customBrushCursorDocker(DockWidget):
                             model.appendRow(item)
                 self.iconView.setModel(model)
                 self.iconView.viewport().update()
-                         
+
+    #called when the Activate button is pressed
+    #arg
+    #return a) cursor icon based on the loaded settings index item or (0,0) index item as default b) nothing                     
     def createCustomCursorFromModel_Item(self):
          #get Item based on the loaded settings:
          # if it's NOT -1 then get the corresponding item from the model and use it to create the cursor
         model = self.iconView.model()
-        if  self.loadedSetting_selectedIndex != -1:
-            getItem = model.item(self.loadedSetting_selectedIndex, 0)  # Row = value , column =  0
-            if getItem:
-                filePath = getItem.data(self.filePathRole)  # Get file path
-                pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
-                self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0,False,False) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , centered:false , rotation:0
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
+        if (model.hasChildren() ): #if the model exists and is not empty
+            if  self.loadedIndex != -1:
+                getItem = model.item(self.loadedIndex, 0)  # Row = value , column =  0
+                if getItem:
+                    filePath = getItem.data(self.filePathRole)  # Get file path
+                    pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
+                    self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0,False,False) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , centered:false , rotation:0
+                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
                     
-                self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
-                self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
-            else:
-                self.staticCustomCursor = QCursor()    #reset the cursors 
-                self.customCursor = QCursor()
-        else:    # if it's -1 then default back to the fist item in the model and create the cursor with it
-             getItem = model.item(0, 0)  # Row = 0, column = 0
-             if getItem:
-                 filePath = getItem.data(self.filePathRole)  # Get file path
-                 pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
-                 self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0,False,False) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , centered:false , rotation:0
-                 self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
+                    self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
+                    self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+                else:
+                    self.staticCustomCursor = QCursor()    #reset the cursors 
+                    self.customCursor = QCursor()
+            else:    # if it's -1 then default back to the fist item in the model and create the cursor with it
+                 getItem = model.item(0, 0)  # Row = 0, column = 0
+                 if getItem:
+                     filePath = getItem.data(self.filePathRole)  # Get file path
+                     pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
+                     self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0,False,False) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , centered:false , rotation:0
+                     self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
                     
-                 self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
-                 self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
-             else:
-                self.staticCustomCursor = QCursor()    #reset the cursors
-                self.customCursor = QCursor()
-                     
-     #when one of the cursor icon is clicked set that one as the main cursor image           
-     #arg index of clicked icon
-     #return  with cursors
-    def on_icon_clicked(self,index):
-       #get the absolute path from the selected item
-        filePath = index.data(self.filePathRole)
-        if os.path.exists(filePath): #if the file exists on the given absolute path
-            pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
-            opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
-            scale = self.sliderforScale.value()
-            rotation = self.sliderforRotation.value()
-
-            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked()) 
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())
-            
-            self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
-            self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
-            
-            #set highlight for the clicked icon
-            self.iconView.setCurrentIndex(index)
-        else: #delete the item from the layout and rearrange the remaining ones
-            model = self.iconView.model()
-            if model:
-                model.removeRow(index.row())
-            QMessageBox.warning(self, "File Missing", f"The file {filePath} was not found and has been removed.")
-            self.iconView.clearSelection()
+                     self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
+                     self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+                 else:
+                    self.staticCustomCursor = QCursor()    #reset the cursors
+                    self.customCursor = QCursor()
+        else:
+            self.iconView.clearSelection()         
             self.staticCustomCursor = QCursor()    #reset the cursors
             self.customCursor = QCursor()  
-    
 
+     #when the current icon changes --> synchronize the active window's viewport with the other windows' viewports
+     #arg: the current icon's index row and column
+     #return  updated viewport and cursors
+    def syncIconViewport(self,indexRow,indexColumn):
+          #if the arg  ndex is valid
+        #self.dbgWindow.append_to_end(f'Incoming INDEX parameter for SYNCICONVIEWPORT:   {indexRow,indexColumn} \n')        
+        if ( indexRow > -1 ):    
+            #self.dbgWindow.append_to_end(f'INDEX IS VALID for SYNCICONVIEWPORT:   {indexRow,indexColumn} \n')
+            #create a fresh filelist of the files in the directory
+            fileList = os.listdir(self.directory_customCursorImage)
+            fileList.sort()
+            ################################################################################################################
+            #>>>>here we check if the window's iconView model is up-to-date and has the same amount of items as the number of images in the directory<<<#
+            if ( self.iconView.model().rowCount()  == len(fileList)) : 
+                #self.dbgWindow.append_to_end(f' SYNC METHOD EQUAL BRANCH --> model rowcount == len(fileList)!  \n')
+                
+                filePath = self.iconView.model().index(indexRow,indexColumn).data(self.filePathRole)   #get the absolute path from the selected item that corresponds to the index arg
+                if os.path.exists(filePath): #if the file exists on the given absolute path
+                    pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                    opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
+                    scale = self.sliderforScale.value()
+                    rotation = self.sliderforRotation.value()
+
+                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked()) 
+                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())
+            
+                    self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
+                    self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+            
+                    #set highlight for the clicked icon
+                    if self.iconView.model().hasIndex(indexRow , indexColumn):
+                        self.iconView.setCurrentIndex(self.iconView.model().index(indexRow,indexColumn))
+                    else:
+                        pass
+                else: #delete the item from the layout and rearrange the remaining ones then set the selection to the first item in the list
+                    model = self.iconView.model()
+                    if model:
+                        model.removeRow(indexRow)
+                    QMessageBox.warning(self, "File Missing", f"The file {filePath} was not found and has been removed.")
+                    if (self.iconView.model().hasIndex(0, 0)):    #(row,coloumn) == 0,0 if there is an icon in the model  at 0,0 
+                        self.iconView.setCurrentIndex(self.iconView.model().index(0, 0))    #set the index to that icon    
+                    else:
+                        self.iconView.clearSelection()         
+                        self.staticCustomCursor = QCursor()    #reset the cursors
+                        self.customCursor = QCursor()
+            ################################################################################################################            
+            elif (self.iconView.model().rowCount() >  len(fileList) ):         #DELETION happened, there are more entries in the model list than files in the directory --> update the model,repopulate the model,set 0,0 index as default if exists
+                #self.dbgWindow.append_to_end(f' SYNC METHOD DELETION branch--> model rowcount > len(fileList)!  {self.iconView.model().rowCount()} > {len(fileList)} \n')
+                if ( len(fileList) > 0 ):    #if there are files in the directory  --> populate  a new model --> set that as the new model for iconView
+                    #clear the model 
+                   #then repopulate the model  --> then set the new selection to default (0,0)
+                    self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero. Need to block signals beforehand otherwise triggers both selectionChanged and currentChanged SIGNALs
+                    for filename in fileList:                   
+                       if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
+                            filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                            pixmap = QPixmap(filePath)
+                            if not pixmap.isNull():
+                                icon = QIcon(pixmap)
+                                item = QStandardItem(icon, "")
+                                item.setData(filePath, self.filePathRole)  # Store file path
+                                item.setData(filename,self.fileNameRole)    # Store filename
+                                self.iconView.model().appendRow(item)
+                    self.iconView.viewport().update()    
+                    
+                    if (self.iconView.model().hasIndex(0, 0)):    
+                        self.iconView.setCurrentIndex(self.iconView.model().index(0, 0))    #set the index to 0,0 
+                        self.iconView.selectionModel().select(self.iconView.model().index(0, 0), QItemSelectionModel.ClearAndSelect)	#selects the item in the view and highlights it
+                        self.iconView.scrollTo(self.iconView.model().index(0, 0))
+                        self.iconView.viewport().update()
+                        
+                        #save the imagefile of the 0,0 indexed item --> turn it into a pixmap so it can be used to create the cursors
+                        filePath = self.iconView.model().index(0,0).data(self.filePathRole)   #get the absolute path from the 0,0 indexed item
+                        if os.path.exists(filePath): #if the file exists on the given absolute path
+                            pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                            opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
+                            scale = self.sliderforScale.value()
+                            rotation = self.sliderforRotation.value()
+                            q_app = QCoreApplication.instance()
+                            q_app.restoreOverrideCursor()    #reset the cursor before setting up the new one
+                            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked())     #static cursor
+                            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #dynamic cursor
+                            self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
+                            self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+                            
+                    else:    #else clear selection because there are no items in the model
+                        self.iconView.clearSelection()
+                        self.iconView.viewport().update()       
+                        self.staticCustomCursor = QCursor()    #reset the cursors
+                        self.customCursor = QCursor()
+                        
+                else:    #if there are no files in the directory --> clear selection -- > reset cursors
+                    self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero.
+                    self.iconView.clearSelection()         
+                    self.staticCustomCursor = QCursor()    #reset the cursors
+                    self.customCursor = QCursor()
+            ################################################################################################################                            
+            elif (self.iconView.model().rowCount() <  len(fileList) ):           #ADDITION happened    --> there are less entries in model than files in the directory --> clear model --> populate new model then set the given index as new one
+                    #self.dbgWindow.append_to_end(f' SYNC ADDITION BRANCH --> model rowcount < len(fileList)!  {self.iconView.model().rowCount() <  len(fileList)}\n')
+                    self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero.                        
+                    for filename in fileList:                   
+                       if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
+                            filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                            pixmap = QPixmap(filePath)
+                            if not pixmap.isNull():
+                                icon = QIcon(pixmap)
+                                item = QStandardItem(icon, "")
+                                item.setData(filePath, self.filePathRole)  # Store file path
+                                item.setData(filename,self.fileNameRole)    # Store filename
+                                self.iconView.model().appendRow(item)
+
+
+                    self.iconView.setCurrentIndex(self.iconView.model().index(indexRow,indexColumn))    #set icon based on the passed index argument
+                    self.iconView.selectionModel().select(self.iconView.model().index(indexRow,indexColumn), QItemSelectionModel.ClearAndSelect)	#selects the item in the view and highlights it
+                    self.iconView.scrollTo(self.iconView.model().index(indexRow,indexColumn))
+                    self.iconView.viewport().update()
+
+                    filePath = self.iconView.model().index(indexRow,indexColumn).data(self.filePathRole)   #get the absolute path from the index item
+                    if os.path.exists(filePath): #if the file exists on the given absolute path
+                        pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                        opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
+                        scale = self.sliderforScale.value()
+                        rotation = self.sliderforRotation.value()
+                        
+                        q_app = QCoreApplication.instance()
+                        q_app.restoreOverrideCursor()    #reset the cursor before setting up the new one
+                        self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked())     #static cursor
+                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #dynamic cursor
+                        self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
+                        self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+                    else:
+                        self.iconView.clearSelection()
+                        self.iconView.viewport().update()       
+                        self.staticCustomCursor = QCursor()    #reset the cursors
+                        self.customCursor = QCursor()
+                 
+        else:      #if the given index is -1 as in not valid--> out of bounds --> clear selection and restore default cursor
+            self.iconView.clearSelection()
+            self.iconView.viewport().update()     
+            self.staticCustomCursor = QCursor()    #reset the cursors
+            self.customCursor = QCursor() 
+                          
+                       
+     #when one of the cursor icon is clicked --> run a check between the model's rowcount and the number of files in the directory  
+     #arg index of clicked icon
+     #return  with cursors or none if there are no files in the directory
+    def on_icon_clicked(self,index):
+        #self.dbgWindow.append_to_end(f'Incoming INDEX parameter for on_icon_clicked:   {index.row(),index.column()} \n')
+        if ( index.isValid() ):    #if the given index is valid,we handle the -1 situation    
+            fileList = os.listdir(self.directory_customCursorImage)
+            fileList.sort()
+            # 3 situations:
+                #1) fileList length equals to the model's rowcount --> no changes ,move selection then create new cursor
+                #2) fileList length is larger than model's rowcount --> a new file was added  --> repopulate the model --> set selection to clicked index
+                #3) fileList length is less than model's rowcount --> deletion happened --> repopulate the model --> set selection to 0,0 as default
+            ################################################################################################################
+            if ( self.iconView.model().rowCount()  == len(fileList)) : #here we check if the window's iconView model is up-to-date and has the same amount of items as the number of images in the directory     
+                filePath = self.iconView.model().index(index.row(),index.column()).data(self.filePathRole)   #get the absolute path from the selected item
+                if os.path.exists(filePath): #if the file exists on the given absolute path
+                    pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                    opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
+                    scale = self.sliderforScale.value()
+                    rotation = self.sliderforRotation.value()
+
+                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked()) 
+                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())           
+                    self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
+                    self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+            
+                    #set icon as current index and set highlight for the clicked icon
+                    if self.iconView.model().hasIndex(index.row() , index.column()):
+                        self.iconView.setCurrentIndex(index)
+                        self.iconView.selectionModel().select(index, QItemSelectionModel.ClearAndSelect)	#selects the item in the view and highlights it
+                        self.iconView.scrollTo(index)
+                    else:    #if somehow there is no such indexed item --> clear selection  and reset cursors
+                        self.iconView.clearSelection()
+                        self.iconView.viewport().update()     
+                        self.staticCustomCursor = QCursor()    #reset the cursors
+                        self.customCursor = QCursor()
+
+                else: #delete the item from the layout and rearrange the remaining ones then set the selection to the first item in the list
+                    model = self.iconView.model()
+                    if model:
+                        model.removeRow(index.row())
+                    QMessageBox.warning(self, "File Missing", f"The file {filePath} was not found and has been removed.")
+                    if (self.iconView.model().hasIndex(0, 0)):    #(row,coloumn) == 0,0 if there is an icon in the model  at 0,0
+                        self.iconView.setCurrentIndex(self.iconView.model().index(0, 0))    #set the index to that icon
+                        self.iconView.selectionModel().select(self.iconView.model().index(0, 0), QItemSelectionModel.ClearAndSelect)	#selects the item in the view and highlights it
+                        self.iconView.scrollTo(self.iconView.model().index(0, 0))
+                    else:
+                        self.iconView.clearSelection()
+                        self.iconView.viewport().update()    
+                        self.staticCustomCursor = QCursor()    #reset the cursors
+                        self.customCursor = QCursor()  
+            ################################################################################################################            
+            elif (self.iconView.model().rowCount() >  len(fileList) ):         #DELETION happened, there are more entries in the model list than files in the directory --> update the model
+                #self.dbgWindow.append_to_end(f' DELETION branch--> model rowcount > len(fileList)!  {self.iconView.model().rowCount()} > {len(fileList)} \n')
+                if ( len(fileList) > 0 ):    #if there are files in the directory  --> populate  a new model --> set that as the new model for iconView
+                    #clear the model 
+                   #then repopulate the model 
+                    self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero. Need to block signals beforehand otherwise triggers both selectionChanged and currentChanged SIGNALs
+                    for filename in fileList:                   
+                       if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
+                            filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                            pixmap = QPixmap(filePath)
+                            if not pixmap.isNull():
+                                icon = QIcon(pixmap)
+                                item = QStandardItem(icon, "")
+                                item.setData(filePath, self.filePathRole)  # Store file path
+                                item.setData(filename,self.fileNameRole)    # Store filename
+                                self.iconView.model().appendRow(item)
+                                
+                    self.iconView.viewport().update()
+                    QMessageBox.warning(self, "File Missing", f"The file {filePath} was not found and has been removed.")
+                    if (self.iconView.model().hasIndex(0, 0)):    #does the iconView have at least one item in it
+                        self.iconView.setCurrentIndex(self.iconView.model().index(0, 0))    #set the index to 0,0
+                        self.iconView.selectionModel().select(self.iconView.model().index(0, 0), QItemSelectionModel.ClearAndSelect)	#selects the item in the view and highlights it
+                        self.iconView.scrollTo(self.iconView.model().index(0, 0))
+                        self.iconView.viewport().update()
+                        
+                        #save the imagefile of the 0,0 indexed item --> turn it into a pixmap so it can be used to create the cursors
+                        filePath = self.iconView.model().index(0, 0).data(self.filePathRole)   #get the absolute path from the 0,0 indexed item
+                        if os.path.exists(filePath): #if the file exists on the given absolute path
+                            pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                            opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
+                            scale = self.sliderforScale.value()
+                            rotation = self.sliderforRotation.value()
+                            
+                            q_app = QCoreApplication.instance()
+                            q_app.restoreOverrideCursor()    #reset the cursor before setting up the new one
+                            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked())     #static cursor
+                            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #dynamic cursor
+                            self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
+                            self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+                            
+                    else:    #if there are no files in the directory thus the model is empty--> clear selection 
+                        self.iconView.clearSelection()
+                        self.iconView.viewport().update()        
+                        self.staticCustomCursor = QCursor()    #reset the cursors
+                        self.customCursor = QCursor()
+                else:    #if there are no files in the directory --> clear selection -- > reset cursors
+                    self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero.
+                    self.iconView.clearSelection()         
+                    self.staticCustomCursor = QCursor()    #reset the cursors
+                    self.customCursor = QCursor()
+            ################################################################################################################                            
+            elif (self.iconView.model().rowCount() <  len(fileList) ):           #ADDITION happened    --> there are less entries in the model than files in the directory --> clear model --> populate new model then set the index to 0,0 as default
+                    #self.dbgWindow.append_to_end(f' ADDITION BRANCH --> model rowcount < len(fileList)!  {self.iconView.model().rowCount() <  len(fileList)}\n')   
+                    self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero.  
+                    for filename in fileList:                   
+                       if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
+                            filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                            pixmap = QPixmap(filePath)
+                            if not pixmap.isNull():
+                                icon = QIcon(pixmap)
+                                item = QStandardItem(icon, "")
+                                item.setData(filePath, self.filePathRole)  # Store file path
+                                item.setData(filename,self.fileNameRole)    # Store filename
+                                self.iconView.model().appendRow(item)
+                                
+                    self.iconView.viewport().update()
+                    self.iconView.setCurrentIndex(self.iconView.model().index(index.row(),index.column()))    #set icon based on the passed index argument
+                    self.iconView.selectionModel().select(self.iconView.model().index(index.row(),index.column()), QItemSelectionModel.ClearAndSelect)	#selects the item in the view and highlights it
+                    self.iconView.scrollTo(self.iconView.model().index(index.row(),index.column()))
+
+                    filePath = self.iconView.model().index(index.row(),index.column()).data(self.filePathRole)   #get the absolute path from the index item
+                    if os.path.exists(filePath): #if the file exists on the given absolute path
+                        pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                        opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
+                        scale = self.sliderforScale.value()
+                        rotation = self.sliderforRotation.value()
+                        
+                        q_app = QCoreApplication.instance()
+                        q_app.restoreOverrideCursor()    #reset the cursor before setting up the new one
+                        self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked())     #static cursor
+                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #dynamic cursor
+                        self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
+                        self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+                    else:    #if for some reason index item has no file behind it, clear model and selection and restore cursors
+                        self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero.
+                        self.iconView.clearSelection()          
+                        self.staticCustomCursor = QCursor()    #reset the cursors
+                        self.customCursor = QCursor()
+                    
+        else:      #if the given index is -1 as in not valid--> out of bounds --> clear selection and restore default cursor
+            self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero.
+            self.iconView.clearSelection()         
+            self.staticCustomCursor = QCursor()    #reset the cursors
+            self.customCursor = QCursor() 
+
+        #self.saveSettings()    #when the method finished its run --> save the Settings
+        
     #function to check if a brush tool was turned on or off then send a custom EVENT based on the bool value
     def checkBrushTool(self,checked):    
         if (checked):    #one of the buttons EMITTED a toggled SIGNAL and it was true so one of them was turned ON
