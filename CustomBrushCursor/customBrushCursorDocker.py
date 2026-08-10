@@ -1,8 +1,10 @@
 from PyQt5.QtWidgets import (
         QLabel,
+        QLineEdit,
         QWidget,
         QMessageBox,
         QCheckBox,
+        QSpinBox,
         QToolButton,
         QMdiArea,
         QListWidget,
@@ -51,6 +53,7 @@ from PyQt5.QtGui import (
         QStandardItemModel,
         QStandardItem,
         QIcon,
+        QIntValidator,
         QTabletEvent)
   
 
@@ -158,6 +161,7 @@ class customBrushCursorDocker(DockWidget):
         self.staticCustomCursor = QCursor() #an original version of custom cursor which will be used for opacity and scale as a basis
         self.isCustomCursorApplied = False
 
+
         #settings related stuff
         self.loadedSetting_selectedIndex = -1    #variable to keep track of the loaded selected index of QListView, by default it's -1
         self.filePathRole = Qt.UserRole    #simple vars used as custom roles for items
@@ -218,12 +222,12 @@ class customBrushCursorDocker(DockWidget):
                 self.sliderforScale.setValue(int(value))
             elif key == "Rotation":
                 self.sliderforRotation.setValue(int(value))
+            elif key == "HotSpotX":
+                self.spinBoxforHotSpotX.setValue(int(value))
+            elif key == "HotSpotY":
+                self.spinBoxforHotSpotY.setValue(int(value))
             elif key == "runOnStartupCheckbox":
                 self.runOnStartup.setChecked(bool(value))
-            elif key == "centeredIconCheckbox":
-                self.centeredIcon.setChecked(bool(value))
-            elif key == "linuxArtistModeFixCheckbox":
-                self.linuxArtistModeFixCheckbox.setChecked(bool(value))
             elif key == "SelectedIcon":
 
                 #self.dbgWindow.append_to_end(f'update_ui_sync_SelectedIcon: {value}\n')
@@ -373,204 +377,14 @@ class customBrushCursorDocker(DockWidget):
         elif (rotation == 360 or rotation == 0):    #no rotation is done 
             result_X = 1
             result_Y = pixmap_height - 1
-
+            	
         return (result_X,result_Y)
-
-
-    #calculates the new hotspot after the rotation for a centered icon
-    #arg scaled_pixmap,transformed_pixmap,rotation in degrees
-    #return an (int,int)  tuple
-    def calculateCursorHotspot_centeredIcon(self,scaled_pixmap,transformed_pixmap,rotation):
-
-        pixmap_width = scaled_pixmap.width()    #get the scaled pixmap width for calculation
-        pixmap_height = scaled_pixmap.height()   #get the scaled pixmap height for calculation
-        
-        #4 sections depending on the rotation value in degrees
-        #0-90 --> x:constant = 1 y: changes
-        #91 - 180 --> x:changes y:constant = 1
-        #181 - 270 --> x: constant = bounding box width - 1 y:changes
-        #271 - 360 --> x:changes y:constant = bounding box height  - 1
-        #0 & 360 --> no rotation applied
-        
-        pointA = (0,0)
-        pointB = (0,0)
-        pointResult = (0,0)
-    
-        #>>> 1 - 90 <<<#
-        #cos(1) - cos(90)
-        if (rotation > 0 and rotation <= 90):
-           angle_rad = math.radians(rotation)    #rotation degrees translated to radians
-           rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
-
-           float_tempY = math.cos(rounded_radianValue) * pixmap_height    #get result in float type
-           fractional_part, integer_part = math.modf(float_tempY)    #get the two part of the floating number 
-           result_Y = 0
-           if (fractional_part < 0.5 ):    #if fractional part is less than 0.5 round down the floating number 
-               result_Y = int(math.cos(rounded_radianValue) * pixmap_height)
-           else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part  thus rounds it down regardless 
-               result_Y = int(math.cos(rounded_radianValue) * pixmap_height) + 1
-             
-           result_X = 1  
-           ##########
-           pointA = (result_X,result_Y)
-           ##########
-
-           #in case of  0-90 we need the opposite point  as if it was 181-270 rotation
-           #sin(1) - sin(90)
-           adjustedDegree = rotation    #we adjust the degree as if it was done in a 0-90 section
-           angle_rad = math.radians(adjustedDegree)
-           rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
-            
-           float_tempY = math.sin(rounded_radianValue) * pixmap_width    #get result in float type
-           fractional_part, integer_part = math.modf(float_tempY)    #get the two part of the floating number 
-           result_Y = 0
-           if (fractional_part < 0.5 ):    #if fractional part is less than 0.5 round down the floating number 
-               result_Y = int(math.sin(rounded_radianValue) * pixmap_width)
-           else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part 
-               result_Y = int(math.sin(rounded_radianValue) * pixmap_width) + 1
-               
-           result_X = transformed_pixmap.width() - 1    #the X coordinate is gonna be the bounding rectangle's width - 1 adjusted because of the brush picture  
-           ########## 
-           pointB = (result_X,result_Y)
-           pointResult = ((pointA[0] + pointB[0]) / 2 , (pointA[1] + pointB[1]) / 2)
-           ########## 
-################################################################################################################################
-        #>>> 91 - 180 <<<#
-        #sin(1) - sin(90)
-        elif (rotation > 90 and rotation <= 180):
-           adjustedDegree = rotation - 90    #we adjust the degree as if it was done in a 0-90 section
-           angle_rad = math.radians(adjustedDegree)
-           rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
-           
-           float_tempX = math.sin(rounded_radianValue) * pixmap_width
-           fractional_part, integer_part = math.modf(float_tempX)
-           result_X = 0
-           if (fractional_part < 0.5 ):    #if fractiona part is less than 0.5 round down the floating number 
-               result_X = int(math.sin(rounded_radianValue) * pixmap_width)
-           else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part 
-               result_X = int(math.sin(rounded_radianValue) * pixmap_width) + 1
-            
-           result_Y = 1  
-           ##########
-           pointA = (result_X,result_Y)
-           ########## 
-           
-           #in case of  91-180 we need the opposite point  as if it was 271-359 rotation 
-           #cos(1) - cos(90)
-           adjustedDegree = rotation - 90   #we adjust the degree as if it was done in a 0-90 section
-           angle_rad = math.radians(adjustedDegree)
-           rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
-            
-           float_tempY = math.cos(rounded_radianValue) * pixmap_height    #get result in float type
-           fractional_part, integer_part = math.modf(float_tempY)    #get the two part of the floating number 
-           result_X = 0
-           if (fractional_part < 0.5 ):    #if fractional part is less than 0.5 round down the floating number 
-               result_X = int(math.cos(rounded_radianValue) * pixmap_height)
-           else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part 
-               result_X = int(math.cos(rounded_radianValue) * pixmap_height) + 1
- 
-           result_Y = transformed_pixmap.height() - 1
-           ##########
-           pointB = (result_X,result_Y)
-           pointResult = ((pointA[0] + pointB[0]) / 2 , (pointA[1] + pointB[1]) / 2)
-           ##########           
-################################################################################################################################
-        #>>> 181 -  270 <<<#
-        #sin(1) - sin(90)
-        elif (rotation > 180 and rotation <= 270):
-            adjustedDegree = rotation  - 180 #we adjust the degree as if it was done in a 0-90 section
-            angle_rad = math.radians(adjustedDegree)
-            rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
-            
-            float_tempY = math.sin(rounded_radianValue) * pixmap_width    #get result in float type
-            fractional_part, integer_part = math.modf(float_tempY)    #get the two part of the floating number 
-            result_Y = 0
-
-            if (fractional_part < 0.5 ):    #if fractional part is less than 0.5 round down the floating number 
-                result_Y = int(math.sin(rounded_radianValue) * pixmap_width)
-            else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part 
-                result_Y = int(math.sin(rounded_radianValue) * pixmap_width) + 1
-               
-            result_X = transformed_pixmap.width() - 1    #the X coordinate is gonna be the bounding rectangle's width - 1 adjusted because of the brush picture  
-            ##########
-            pointA = (result_X,result_Y)
-            ##########
-            
-            #in case of  181-270 we need the opposite point  as if it was 1- 90 rotation
-            #cos(1) - cos(90)
-            adjustedDegree = rotation  - 180
-            angle_rad = math.radians(adjustedDegree)   #rotation degrees translated to radians
-            rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
-
-            float_tempY = math.cos(rounded_radianValue) * pixmap_height    #get result in float type
-            fractional_part, integer_part = math.modf(float_tempY)    #get the two part of the floating number 
-            result_Y = 0
-            if (fractional_part < 0.5 ):    #if fractional part is less than 0.5 round down the floating number 
-                result_Y = int(math.cos(rounded_radianValue) * pixmap_height)
-            else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part  thus rounds it down regardless 
-                result_Y = int(math.cos(rounded_radianValue) * pixmap_height) + 1
-             
-            result_X = 1 
-            ########## 
-            pointB = (result_X,result_Y)
-            pointResult = ((pointA[0] + pointB[0]) / 2 , (pointA[1] + pointB[1]) / 2)
-            ##########
-################################################################################################################################
-        #>>> 271 -  359 <<<#
-        #cos(1) - cos(90)
-        elif (rotation > 270 and rotation < 360):
-            adjustedDegree = rotation - 270    #we adjust the degree as if it was done in a 0-90 section
-            angle_rad = math.radians(adjustedDegree)
-            rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
-            
-            float_tempY = math.cos(rounded_radianValue) * pixmap_height    #get result in float type
-            fractional_part, integer_part = math.modf(float_tempY)    #get the two part of the floating number 
-            result_X = 0
-            if (fractional_part < 0.5 ):    #if fractional part is less than 0.5 round down the floating number 
-                result_X = int(math.cos(rounded_radianValue) * pixmap_height)
-            else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part 
-                result_X = int(math.cos(rounded_radianValue) * pixmap_height) + 1
- 
-            result_Y = transformed_pixmap.height() - 1
-            ##########
-            pointA = (result_X,result_Y)
-            #self.dbgWindow.append_to_end(f'centeredIcon_pointA: pointA_X : {pointA[0]}  ,   pointA_Y : {pointA[1]}\n')
-            ##########
-            #in case of  270-360 we need the opposite point  as if it was 270-360 rotation
-            
-            adjustedDegree = rotation - 270    #we adjust the degree as if it was done in a 0-90 section
-            angle_rad = math.radians(adjustedDegree)
-            rounded_radianValue= round(angle_rad,10)    #round the radian value down  to 10 decimals
-           
-            float_tempX = math.sin(rounded_radianValue) * pixmap_width
-            fractional_part, integer_part = math.modf(float_tempX)
-            result_X = 0
-            if (fractional_part < 0.5 ):    #if fractiona part is less than 0.5 round down the floating number 
-                result_X = int(math.sin(rounded_radianValue) * pixmap_width)
-            else:    #otherwise round it up so add + 1 to it because int()  type casting returns only the integer part 
-                result_X = int(math.sin(rounded_radianValue) * pixmap_width) + 1
-            
-            result_Y = 1
-            ##########  
-            pointB = (result_X,result_Y)
-            
-            #self.dbgWindow.append_to_end(f'centeredIcon_pointB: pointB_X : {pointB[0]}  ,   pointB_Y : {pointB[1]}\n')
-            pointResult = ((pointA[0] + pointB[0]) / 2 , (pointA[1] + pointB[1]) / 2)
-            ##########
-            #self.dbgWindow.append_to_end(f'centeredIcon_pointRESULT: pointResult_X : {pointResult[0]}  ,   pointResult_Y : {pointResult[1]}\n') 
-################################################################################################################################            
-        #>>>  0 &  360 <<<#
-        elif (rotation == 360 or rotation == 0):    #no rotation is done 
-            ##########
-            pointResult = ( pixmap_width / 2 , pixmap_height / 2 - 1)
-            ##########
-        return (int(pointResult[0]),int(pointResult[1]))
 
     #creates the custom cursor
     # first we scale the pixmap,change its opacity then  rotate around Z axis 
     #arg pixmap,scale,opacity,rotation,crosshair_bool,linuxFIX_bool
     #return QCursor
-    def createCustomCursor(self,pixmap,scale,opacity,rotation,centeredIcon,linuxArtistModeFix):       
+    def createCustomCursor(self,pixmap,scale,opacity,rotation,hotSpotX = None ,hotSpotY = None ):       
        
         scaled_pixmap = self.pixmapScale(pixmap,scale)      #scale the pixmap with input scale value 
         scaled_pixmap = self.changeOpacity(scaled_pixmap,opacity)       #change the opacity of the already scaled pixmap with opacity
@@ -580,28 +394,12 @@ class customBrushCursorDocker(DockWidget):
         transform.rotate(rotation,axis)    # a, axis, distanceToPlane - a = degrees , axis , distancetoPlane = distance from the screen
         transformed_pixmap = scaled_pixmap.transformed(transform)    #this rotates around Z axis
         
-        #tuple containing the new (X,Y) values for cursor hotspot
-        newhotspot = self.calculateCursorHotspot(scaled_pixmap,transformed_pixmap,rotation)         
-        #check whether the orientation of the cursor icon is centered like a crosshair or not
-        #if it's centered then use a different offset
-        if linuxArtistModeFix:
-            linuxArtistModeFix_newhotspot0 = 0
-            linuxArtistModeFix_newhotspot1 = -int(scaled_pixmap.height()/2) + 1
-            
-            #qCursor = QCursor(scaled_pixmap,0,-int(scaled_pixmap.height()/2) + 1 )
-            qCursor = QCursor(transformed_pixmap,linuxArtistModeFix_newhotspot0,linuxArtistModeFix_newhotspot1 )
-            if centeredIcon:
-                #qCursor = QCursor(scaled_pixmap,int(scaled_pixmap.width()/4),int(scaled_pixmap.height()/4) + 1)
-                qCursor = QCursor(transformed_pixmap, int(scaled_pixmap.width()/4), int(scaled_pixmap.height()/4) + 1)
-                # qCursor = QCursor(scaled_pixmap,int(int(scaled_pixmap.height())*1.5),0)
-            # else:
-                # qCursor = QCursor(transformed_pixmap,newhotspot[0],-newhotspot[1])     #create a cursor object from scaledImage and set its coordinates 
+        if (hotSpotX is None or hotSpotY is None):		
+            #tuple containing the new (X,Y) values for cursor hotspot
+            newhotspot = self.calculateCursorHotspot(scaled_pixmap,transformed_pixmap,rotation)         
+            qCursor = QCursor(transformed_pixmap,newhotspot[0],newhotspot[1])     #create a cursor object from scaledImage and set its coordinates 
         else:
-            if centeredIcon:              
-                newhotspot_centeredIcon = self.calculateCursorHotspot_centeredIcon (scaled_pixmap,transformed_pixmap,rotation)
-                qCursor = QCursor(transformed_pixmap,newhotspot_centeredIcon[0] , newhotspot_centeredIcon[1] )
-            else:
-                qCursor = QCursor(transformed_pixmap,newhotspot[0],newhotspot[1])     #create a cursor object from scaledImage and set its coordinates 
+            qCursor = QCursor(transformed_pixmap,hotSpotX,hotSpotY)
         return  qCursor	
     
     def initGUI(self):
@@ -673,19 +471,64 @@ class customBrushCursorDocker(DockWidget):
         self.sliderforRotation.valueChanged.connect(self.update_cursorRotation)
         optionsLayout.addWidget(self.labelforRotation)
         optionsLayout.addWidget(self.sliderforRotation)
+		
+		
+        # Manual cursor hotSpot settings
+        self.labelforHotSpotX = QLabel("hotSpot X: ( )")
+        self.labelforHotSpotY = QLabel("hotSpot Y: ( )")
+        self.labelforHotSpotX.setTextFormat(Qt.PlainText)    #force literal text 
+        self.labelforHotSpotY.setTextFormat(Qt.PlainText)    #force literal text 
+        
+        #spin boxes for hotspot editing
+        self.spinBoxforHotSpotX = QSpinBox()
+        self.spinBoxforHotSpotY = QSpinBox()
+        self.spinBoxforHotSpotX.setRange(0,0) #default range
+        self.spinBoxforHotSpotY.setRange(0,0) #default range
+        self.spinBoxforHotSpotX.setValue(0) #default value
+        self.spinBoxforHotSpotY.setValue(0) #default value
+        self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>0</b> to <b>0</b>")    #set up default value tooltips 0 to 0
+        self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>0</b> to <b>0</b>")
+        
+        ## Hide the arrows so it looks identical to a QLineEdit
+        #self.numberBox.setButtonSymbols(QSpinBox.NoButtons)
+
+        # Create a horizontal layout for X and Y textbox
+        RowLayoutHOTSPOT = QHBoxLayout()
+        RowLayoutHOTSPOT.addWidget(self.labelforHotSpotX)
+        RowLayoutHOTSPOT.addWidget(self.spinBoxforHotSpotX)
+        RowLayoutHOTSPOT.addSpacing(15)  # roughly a 'tab' size of spacing
+        RowLayoutHOTSPOT.addWidget(self.labelforHotSpotY)
+        RowLayoutHOTSPOT.addWidget(self.spinBoxforHotSpotY)
+        optionsLayout.addLayout(RowLayoutHOTSPOT)
+		
+        ######################################################################	
+        ##SCALE changes--> change validators range for new width/height 
 
         # Checkboxes
         self.runOnStartup = QCheckBox("Run on startup")
         
-        self.centeredIcon = QCheckBox("Centered cursor icon")
-        self.centeredIcon.stateChanged.connect(self.centerHotspot)
+        # Size labels
+        self.labelforTopLeftPoint = QLabel("TopLeft: ( ) ")
+        self.labelforTopRightPoint = QLabel("TopRight: ( ) ")
+        self.labelforBottomLeftPoint = QLabel("BottomLeft: ( ) ")
+        self.labelforBottomRightPoint = QLabel("BottomRight: ( ) ")
+        self.labelforCenterPoint = QLabel("Center point: ( ) / ( -1 , -1)")
         
-        self.linuxArtistModeFixCheckbox = QCheckBox("(For Linux) Artist mode fix")
-        self.linuxArtistModeFixCheckbox.stateChanged.connect(self.linuxArtistModeFix)
+        # Create a horizontal layout for width and height labels
+        TopPointsLabelRowLayout = QHBoxLayout()
+        TopPointsLabelRowLayout.addWidget(self.labelforTopLeftPoint)
+        TopPointsLabelRowLayout.addSpacing(15)  # roughly a 'tab' size of spacing
+        TopPointsLabelRowLayout.addWidget(self.labelforTopRightPoint)
+
+        BottomPointsLabelRowLayout = QHBoxLayout()
+        BottomPointsLabelRowLayout.addWidget(self.labelforBottomLeftPoint)
+        BottomPointsLabelRowLayout.addSpacing(15)  # roughly a 'tab' size of spacing
+        BottomPointsLabelRowLayout.addWidget(self.labelforBottomRightPoint)
         
         optionsLayout.addWidget(self.runOnStartup, alignment=Qt.AlignTop | Qt.AlignHCenter)
-        optionsLayout.addWidget(self.centeredIcon, alignment=Qt.AlignTop | Qt.AlignHCenter)
-        optionsLayout.addWidget(self.linuxArtistModeFixCheckbox, alignment=Qt.AlignTop | Qt.AlignHCenter)
+        optionsLayout.addLayout(TopPointsLabelRowLayout)
+        optionsLayout.addLayout(BottomPointsLabelRowLayout)
+        optionsLayout.addWidget(self.labelforCenterPoint,alignment=Qt.AlignTop | Qt.AlignHCenter)
       
         layout.addWidget(self.optionsWidget)
         
@@ -749,11 +592,13 @@ class customBrushCursorDocker(DockWidget):
         app.writeSetting(group, "Opacity", str(self.sliderforOpacity.value()))
         app.writeSetting(group, "Scale", str(self.sliderforScale.value()))
         app.writeSetting(group, "Rotation", str(self.sliderforRotation.value()))
-
+        
+        # Save hotSpot X and Y values
+        app.writeSetting(group,"HotSpotX",str(self.spinBoxforHotSpotX.value()))
+        app.writeSetting(group,"HotSpotY",str(self.spinBoxforHotSpotY.value()))
+        
         # Save Checkboxes (True/False are stored as strings "true"/"false")
         app.writeSetting(group,"Checkbox_runOnStartup", str(self.runOnStartup.isChecked()))
-        app.writeSetting(group, "Checkbox_CenteredCursorIcon", str(self.centeredIcon.isChecked()))
-        app.writeSetting(group, "Checkbox_ArtistModeFIX", str(self.linuxArtistModeFixCheckbox.isChecked()))
 
         # Save QListView selection
         selected_index = 0
@@ -762,7 +607,6 @@ class customBrushCursorDocker(DockWidget):
         selected_index = self.iconView.selectionModel().currentIndex()        
         if (selected_index and not (selected_index.row() == -1)):    #if there is a valid index 
              app.writeSetting(group, "SelectedIcon", str(selected_index.row()))    #get the list's first entry and save its row attribute
-             #self.dbgWindow.append_to_end(f'row_to_save:{selected_index.row()}\n')
         else:
              app.writeSetting(group, "SelectedIcon", str(-1))               # No selection
        
@@ -794,17 +638,21 @@ class customBrushCursorDocker(DockWidget):
         rotation = int(app.readSetting(group, "Rotation", "0"))
         self.sliderforRotation.setValue(rotation)
         
+        # Load HotSpot coordinate
+        hotSpotX = app.readSetting(group,"HotSpotX", "")  #don't set a default value 
+        hotSpotY = app.readSetting(group,"HotSpotY", "")    #
+        if not hotSpotX == "":  #if  the loaded value exists 
+            self.spinBoxforHotSpotX.setValue(int(hotSpotX))
+        elif not hotSpotY == "":
+            self.spinBoxforHotSpotY.setValue(int(hotSpotY))
+
+        #self.dbgWindow.append_to_end(f"Load settings \n")       
+        
+        
         # Load Checkbox: Run On Startup state (default to False if not found)
         runOnStartup_val = app.readSetting(group, "Checkbox_runOnStartup", "false").lower() == "true"
         self.runOnStartup.setChecked(runOnStartup_val)        
         
-        # Load Checkbox: Centered Cursor Icon state (default to False if not found)
-        is_centered = app.readSetting(group, "Checkbox_CenteredCursorIcon", "false").lower() == "true"
-        self.centeredIcon.setChecked(is_centered)
-        
-        # Load Checkbox: Artist mode fix(For Linux) state (default to False if not found)
-        artist_mode_fix = app.readSetting(group,"Checkbox_ArtistModeFIX","false").lower() == "true"
-        self.linuxArtistModeFixCheckbox.setChecked(artist_mode_fix)
         
         # Load selected index for QListView (if no saved setting is found -1 --> set the 1st item as selected icon by default but check if there are items in the model)
         self.loadedIndex = int(app.readSetting(group,"SelectedIcon", "-1"))
@@ -827,9 +675,12 @@ class customBrushCursorDocker(DockWidget):
             self.sliderforScale.valueChanged.connect(lambda val: self.broadcast("Scale", val))
             self.sliderforRotation.valueChanged.connect(lambda val: self.broadcast("Rotation", val))
             self.runOnStartup.stateChanged.connect(lambda checked: self.broadcast("runOnStartupCheckbox",checked))
-            self.centeredIcon.stateChanged.connect(lambda checked: self.broadcast("centeredIconCheckbox",checked))
-            self.linuxArtistModeFixCheckbox.stateChanged.connect(lambda checked: self.broadcast("linuxArtistModeFixCheckbox",checked))
-
+            
+            self.spinBoxforHotSpotX.valueChanged.connect(lambda val: self.broadcast("HotSpotX",val))
+            self.spinBoxforHotSpotY.valueChanged.connect(lambda val: self.broadcast("HotSpotY",val))  
+            self.spinBoxforHotSpotX.valueChanged.connect(lambda val: self.update_cursorHotSpot("HotSpotX",val))
+            self.spinBoxforHotSpotY.valueChanged.connect(lambda val: self.update_cursorHotSpot("HotSpotY",val))
+            
             self.iconView.selectionModel().currentChanged.connect(lambda current, prev: self.broadcast("SelectedIcon" , current.row()))
             self.iconView.clicked.connect(self.on_icon_clicked)
         else:
@@ -858,6 +709,8 @@ class customBrushCursorDocker(DockWidget):
                 self.sliderforOpacity.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
                 self.sliderforScale.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
                 self.sliderforRotation.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
+                self.spinBoxforHotSpotX.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
+                self.spinBoxforHotSpotY.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
                 if (self.iconView.model().hasChildren()):    #if the iconView model has items
                     self.iconView.selectionModel().selectionChanged.connect(lambda: self.saveSettings(), Qt.UniqueConnection)    #set up icon selection change  SIGNAL  --> save the settings 
                 else:    #else don't set up the SIGNAL---SLOT connection because it would cause an error otherwise
@@ -865,8 +718,6 @@ class customBrushCursorDocker(DockWidget):
             
                 #set to run the saveSettings method when the checkbox state changed SIGNAL is fired
                 self.runOnStartup.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
-                self.centeredIcon.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
-                self.linuxArtistModeFixCheckbox.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
                 self.buttonStatus.toggle()    #toggle the button manually via code
             elif (isCanvasReady()):    #if the runOnStartup was not checked but a canvas is available -- > connect the SIGNAL-SLOT connections for UI elements but only on the first run
                 self.firstRun = False    #flip the firstRun bool so when a new view is created the above code won't run again
@@ -874,6 +725,8 @@ class customBrushCursorDocker(DockWidget):
                 self.sliderforOpacity.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
                 self.sliderforScale.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
                 self.sliderforRotation.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
+                self.spinBoxforHotSpotX.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
+                self.spinBoxforHotSpotY.valueChanged.connect(self.triggerSave)    #call the timer and wait 1 second to save the value
                 if (self.iconView.model().hasChildren()):    #if the iconView model has items
                     self.iconView.selectionModel().selectionChanged.connect(lambda: self.saveSettings(), Qt.UniqueConnection)    #set up icon selection change  SIGNAL  --> save the settings 
                 else:    #else don't set up the SIGNAL---SLOT connection because it would cause an error otherwise
@@ -881,8 +734,6 @@ class customBrushCursorDocker(DockWidget):
             
                 #set to run the saveSettings method when the checkbox state changed SIGNAL is  fired
                 self.runOnStartup.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
-                self.centeredIcon.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
-                self.linuxArtistModeFixCheckbox.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
             else:    #if  there is no available canvas on the first run don't do anything but wait 
                pass
  
@@ -905,7 +756,6 @@ class customBrushCursorDocker(DockWidget):
             
             QMdiArea.installEventFilter(self)    #install the eventFilter on this object 
             self.iconView.viewport().installEventFilter(self)    #install the eventFilter on this object 
-            
             self.optionsWidget.show()    #show optionsWidget
             self.iconView.show()  # show iconView 
 
@@ -936,7 +786,7 @@ class customBrushCursorDocker(DockWidget):
         #If the button is checked == True
         if checked:
             self.buttonStatus.setText('Deactivate')    #set the text on the button to "Deactivate"
-            self.loadSettings()    #when the button is activated either via the user or via code --> load the saved settings
+            #self.loadSettings()    #when the button is activated either via the user or via code --> load the saved settings
             self.createCustomCursorFromModel_Item()    #then we create the custom cursor based on the loaded settings
             self.hook_core_app()   #install eventFilters then show the widgets
             
@@ -964,7 +814,7 @@ class customBrushCursorDocker(DockWidget):
                 msgBox = QMessageBox()
                 msgBox.setText("There was an error creating a folder")
                 msgBox.exec() 
-            
+     
     #update cursor opacity
     #arg opacitySlider value
     #creates an updated customCursor with new opacity 
@@ -976,7 +826,25 @@ class customBrushCursorDocker(DockWidget):
         opacity = value / 100.0
         
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursors exists
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create new cursor with changed opacity based on static cusror
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value())    #create new cursor with changed opacity based on static cusror
+            self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+            self.initial_hotSpotY = self.customCursor.hotSpot().y()
+            
+            self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+            self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")       
+            self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() )  #update the valid range to the new pixmap width
+            self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() )  #update the valid range to the new pixmap height
+            self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+            self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+            self.spinBoxforHotSpotX.setValue( self.initial_hotSpotX)    #set spinBox value to cursor hotSpot 
+            self.spinBoxforHotSpotY.setValue( self.initial_hotSpotY)
+
+            self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()} ")
+            self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+            self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+            self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+            
+            self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
         else:
             pass
             
@@ -991,50 +859,34 @@ class customBrushCursorDocker(DockWidget):
         opacity = self.sliderforOpacity.value() / 100.0
 
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),value,opacity,self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create new cursor with the changed scale based on static cursor
-
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),value,opacity,self.sliderforRotation.value())    #create new cursor with the changed scale based on static cursor
+            self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+            self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                    
             self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
             self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+             
+            self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+            self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")       
+            self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() )  #update the valid range to the new pixmap width
+            self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() )  #update the valid range to the new pixmap height
+            self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+            self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+            self.spinBoxforHotSpotX.setValue( self.initial_hotSpotX)    #set spinBox value to cursor hotSpot 
+            self.spinBoxforHotSpotY.setValue( self.initial_hotSpotY) 
+            
+            #update labels for different points
+            self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
+            self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+            self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+            self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+            
+            self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
+
         else:
             pass
 
-    #changes the offset of the cursor icon if it has centered orientation
-    #arg
-    #creates an updated customCursor with a changed offset
-    def centerHotspot(self):
-        #if checkbox is checked->change the cursor icon offset
-        #pass True as arg for constructor
-        if  self.centeredIcon.isChecked():
-            if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-                opacity = self.sliderforOpacity.value() / 100.0
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),True,self.linuxArtistModeFixCheckbox.isChecked())   
-            else:
-                pass
-        #otherwise if the pixmap is not null  and the checkbox is NOT checked -> change offset back
-        else:
-            if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-                opacity = self.sliderforOpacity.value() / 100.0
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),False,self.linuxArtistModeFixCheckbox.isChecked())   
-            else:
-                pass
-            
-    def linuxArtistModeFix(self):
-        #if checkbox is checked->change the cursor icon vertical offset
-        #pass True as arg for constructor
-        if  self.linuxArtistModeFixCheckbox.isChecked():
-            if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-                opacity = self.sliderforOpacity.value() / 100.0
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),self.centeredIcon.isChecked(),True)   
-            else:
-                pass
-        #otherwise if the pixmap is not null  and the checkbox is NOT checked -> change offset back
-        else:
-            if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-                opacity = self.sliderforOpacity.value() / 100.0
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),self.centeredIcon.isChecked(),False)   
-            else:
-                pass
-
+ 
     #update cursor rotation
     #arg cursorRotation value
     #creates an updated customCursor with new rotation       
@@ -1046,11 +898,48 @@ class customBrushCursorDocker(DockWidget):
         opacity = self.sliderforOpacity.value() / 100.0
 
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,value,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create new cursor with the changed rotation based on static cursor
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,value)    #create new cursor with the changed rotation based on static cursor
+            self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+            self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                    
+            self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
+            self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+            
+            self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+            self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")       
+            self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() )  #update the valid range to the new pixmap width
+            self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() )  #update the valid range to the new pixmap height
+            self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+            self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+            self.spinBoxforHotSpotX.setValue( self.initial_hotSpotX)    #set spinBox value to cursor hotSpot 
+            self.spinBoxforHotSpotY.setValue( self.initial_hotSpotY) 
+            
+            #update the labels for the different points
+            self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
+            self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+            self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+            self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+            
+            self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
         else:
             pass
+    
 
+    def update_cursorHotSpot(self,key,value):
+        # Convert value (0-100) to opacity (0.0-1.0)
+        opacity = self.sliderforOpacity.value() / 100.0
 
+        if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
+            if key == "HotSpotX":
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity ,self.sliderforRotation.value(), value , self.spinBoxforHotSpotY.value())    #create new cursor with the new hotSpotX
+                self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x() } )")    #update the text of labels for cursor HotSpot X and Y 
+            elif key == "HotSpotY":
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity ,self.sliderforRotation.value(), self.spinBoxforHotSpotX.value() , value)    #create new cursor with the new hotSpotY
+                self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y() } )")
+        return    
+    
+    
+    
    #after creating the directory for the cursor images make it writeable for current USER
    #arg directory
    #tries to make the directory writeable for file copy operation
@@ -1124,10 +1013,32 @@ class customBrushCursorDocker(DockWidget):
                             break
                     
                     #when the set up is complete create the cursors
-                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1.0,0,False,self.linuxArtistModeFixCheckbox.isChecked()) #an original version of the cursor which will be used to create a changing version so it's created with default values: "0" for scale and "1" for full opacity
-                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity,0,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())  #create the changing cursor  from the static cursor
-                    self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #set the size labels with the size values
+                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1.0,0) #an original version of the cursor which will be used to create a changing version so it's created with default values: "0" for scale and "1" for full opacity
+                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity,0)  #create the changing cursor  from the static cursor
+                    self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+                    self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                            
+                    self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
                     self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+ 		
+                    self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+                    self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")
+                    self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() ) #update the valid range to the new pixmap width
+                    self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() ) #update the valid range to the new pixmap height
+                    self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+                    self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+            		
+                    self.spinBoxforHotSpotX.setValue(self.initial_hotSpotX)
+                    self.spinBoxforHotSpotY.setValue(self.initial_hotSpotY)
+                    
+                    #update the labels for different points
+                    self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
+                    self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+                    self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+                    self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+                    
+                    self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
+
                 else:
                     msgBox = QMessageBox()
                     msgBox.setText(f"Pixmap is NULL after opening file")
@@ -1193,24 +1104,61 @@ class customBrushCursorDocker(DockWidget):
                 if getItem:
                     filePath = getItem.data(self.filePathRole)  # Get file path
                     pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
-                    self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0,False,False) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , centered:false , rotation:0
-                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
+                    self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
+                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
+                    self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+                    self.initial_hotSpotY = self.customCursor.hotSpot().y()
                     
                     self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
                     self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+                    
+                    self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() )  #update the valid range to the new pixmap width
+                    self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() )  #update the valid range to the new pixmap height
+                    self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+                    self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+                    self.spinBoxforHotSpotX.setValue( self.initial_hotSpotX)    #set spinBox value to cursor hotSpot 
+                    self.spinBoxforHotSpotY.setValue( self.initial_hotSpotY) 
+                    
+                    #update the labels for different points
+                    self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
+                    self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+                    self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+                    self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+                    
+                    self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
                 else:
                     self.staticCustomCursor = QCursor()    #reset the cursors 
                     self.customCursor = QCursor()
-            else:    # if it's -1 then default back to the fist item in the model and create the cursor with it
+            else:    # if it's -1 then default back to the first item in the model and create the cursor with it
                  getItem = model.item(0, 0)  # Row = 0, column = 0
                  if getItem:
                      filePath = getItem.data(self.filePathRole)  # Get file path
                      pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
-                     self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0,False,False) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , centered:false , rotation:0
-                     self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
-                    
+                     self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , centered:false , rotation:0
+                     self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
+                     self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspots 
+                     self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                     
                      self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
                      self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+                     
+                     self.labelforHotSpotX.setText(f"HotSpot X: ( { self.initial_hotSpotX} )")    #update the text of labels for cursor HotSpot X and Y 
+                     self.labelforHotSpotY.setText(f"HotSpot Y: ( { self.initial_hotSpotY} )")
+                     
+                     self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() )  #update the valid range to the new pixmap width
+                     self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() )  #update the valid range to the new pixmap height
+                     self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+                     self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+                     self.spinBoxforHotSpotX.setValue( self.initial_hotSpotX)    #set spinBox value to cursor hotSpot
+                     self.spinBoxforHotSpotY.setValue( self.initial_hotSpotY) 
+
+                    #update the labels for different points
+                     self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
+                     self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+                     self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+                     self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+                     
+                     self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
                  else:
                     self.staticCustomCursor = QCursor()    #reset the cursors
                     self.customCursor = QCursor()
@@ -1242,11 +1190,32 @@ class customBrushCursorDocker(DockWidget):
                     scale = self.sliderforScale.value()
                     rotation = self.sliderforRotation.value()
 
-                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked()) 
-                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())
+                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0) 
+                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)
             
+                    self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+                    self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                            
                     self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
                     self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+ 			
+                    self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+                    self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")
+                    self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() ) #update the valid range to the new pixmap width
+                    self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() ) #update the valid range to the new pixmap height
+                    self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+                    self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+            		
+                    self.spinBoxforHotSpotX.setValue(self.initial_hotSpotX)
+                    self.spinBoxforHotSpotY.setValue(self.initial_hotSpotY)
+                    
+                    #update the labels for different points
+                    self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
+                    self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+                    self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+                    self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+                    
+                    self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
             
                     #set highlight for the clicked icon
                     if self.iconView.model().hasIndex(indexRow , indexColumn):
@@ -1298,11 +1267,31 @@ class customBrushCursorDocker(DockWidget):
                             rotation = self.sliderforRotation.value()
                             q_app = QCoreApplication.instance()
                             q_app.restoreOverrideCursor()    #reset the cursor before setting up the new one
-                            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked())     #static cursor
-                            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #dynamic cursor
+                            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0)     #static cursor
+                            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)    #dynamic cursor
+                            self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+                            self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                            
                             self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
                             self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+ 			
+                            self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+                            self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")
+                            self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() ) #update the valid range to the new pixmap width
+                            self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() ) #update the valid range to the new pixmap height
+                            self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+                            self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+            		
+                            self.spinBoxforHotSpotX.setValue(self.initial_hotSpotX)
+                            self.spinBoxforHotSpotY.setValue(self.initial_hotSpotY)
                             
+                            #update the labels for different  points
+                            self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
+                            self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+                            self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+                            self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+                            
+                            self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
                     else:    #else clear selection because there are no items in the model
                         self.iconView.clearSelection()
                         self.iconView.viewport().update()       
@@ -1344,10 +1333,31 @@ class customBrushCursorDocker(DockWidget):
                         
                         q_app = QCoreApplication.instance()
                         q_app.restoreOverrideCursor()    #reset the cursor before setting up the new one
-                        self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked())     #static cursor
-                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #dynamic cursor
+                        self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0)     #static cursor
+                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)    #dynamic cursor
+                        self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+                        self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                            
                         self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
                         self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+ 			
+                        self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+                        self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")
+                        self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() ) #update the valid range to the new pixmap width
+                        self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() ) #update the valid range to the new pixmap height
+                        self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+                        self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+            		
+                        self.spinBoxforHotSpotX.setValue(self.initial_hotSpotX)
+                        self.spinBoxforHotSpotY.setValue(self.initial_hotSpotY)
+                        
+                        #update the labels for different points
+                        self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
+                        self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+                        self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+                        self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+                        
+                        self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
                     else:
                         self.iconView.clearSelection()
                         self.iconView.viewport().update()       
@@ -1382,11 +1392,31 @@ class customBrushCursorDocker(DockWidget):
                     scale = self.sliderforScale.value()
                     rotation = self.sliderforRotation.value()
 
-                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked()) 
-                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())           
+                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0) 
+                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)           
+                    self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+                    self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                    
                     self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
                     self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
-            
+                    
+                    self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+                    self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")
+                    self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() ) #update the valid range to the new pixmap width
+                    self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() ) #update the valid range to the new pixmap height
+                    self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+                    self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+            		
+                    self.spinBoxforHotSpotX.setValue(self.initial_hotSpotX)
+                    self.spinBoxforHotSpotY.setValue(self.initial_hotSpotY)
+                    
+                    #update the labels for different points
+                    self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
+                    self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+                    self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+                    self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+                    
+                    self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
                     #set icon as current index and set highlight for the clicked icon
                     if self.iconView.model().hasIndex(index.row() , index.column()):
                         self.iconView.setCurrentIndex(index)
@@ -1448,11 +1478,31 @@ class customBrushCursorDocker(DockWidget):
                             
                             q_app = QCoreApplication.instance()
                             q_app.restoreOverrideCursor()    #reset the cursor before setting up the new one
-                            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked())     #static cursor
-                            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #dynamic cursor
+                            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0)     #static cursor
+                            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)    #dynamic cursor
+                            self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+                            self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                            
                             self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
                             self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+ 			
+                            self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+                            self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")
+                            self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() ) #update the valid range to the new pixmap width
+                            self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() ) #update the valid range to the new pixmap height
+                            self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+                            self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+            		
+                            self.spinBoxforHotSpotX.setValue(self.initial_hotSpotX)
+                            self.spinBoxforHotSpotY.setValue(self.initial_hotSpotY)
                             
+                            #update the labels for different points
+                            self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
+                            self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+                            self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+                            self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+
+                            self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
                     else:    #if there are no files in the directory thus the model is empty--> clear selection 
                         self.iconView.clearSelection()
                         self.iconView.viewport().update()        
@@ -1492,10 +1542,31 @@ class customBrushCursorDocker(DockWidget):
                         
                         q_app = QCoreApplication.instance()
                         q_app.restoreOverrideCursor()    #reset the cursor before setting up the new one
-                        self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False,self.linuxArtistModeFixCheckbox.isChecked())     #static cursor
-                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,self.centeredIcon.isChecked(),self.linuxArtistModeFixCheckbox.isChecked())    #dynamic cursor
+                        self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0)     #static cursor
+                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)    #dynamic cursor
+                        self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+                        self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                            
                         self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
                         self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+ 			
+                        self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+                        self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")
+                        self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() ) #update the valid range to the new pixmap width
+                        self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() ) #update the valid range to the new pixmap height
+                        self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+                        self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+            		
+                        self.spinBoxforHotSpotX.setValue(self.initial_hotSpotX)
+                        self.spinBoxforHotSpotY.setValue(self.initial_hotSpotY)
+                        
+                        #update the labels for different  points
+                        self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
+                        self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+                        self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+                        self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+                        
+                        self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
                     else:    #if for some reason index item has no file behind it, clear model and selection and restore cursors
                         self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero.
                         self.iconView.clearSelection()          
