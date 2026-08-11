@@ -160,6 +160,8 @@ class customBrushCursorDocker(DockWidget):
         self.customCursor = QCursor()        #the changing version of cursor
         self.staticCustomCursor = QCursor() #an original version of custom cursor which will be used for opacity and scale as a basis
         self.isCustomCursorApplied = False
+        self.loadedHotSpotX = False
+        self.loadedHotSpotY = False
 
 
         #settings related stuff
@@ -642,9 +644,21 @@ class customBrushCursorDocker(DockWidget):
         hotSpotX = app.readSetting(group,"HotSpotX", "")  #don't set a default value 
         hotSpotY = app.readSetting(group,"HotSpotY", "")    #
         if not hotSpotX == "":  #if  the loaded value exists 
+            self.spinBoxforHotSpotX.setRange(-1,int(hotSpotX) )  #update the valid range to the new pixmap width
+            self.spinBoxforHotSpotY.setRange(-1,int(hotSpotY) )  #update the valid range to the new pixmap height
+            self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{int(hotSpotX) }</b>")    #set up default value tooltips 0 to 0
+            self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{int(hotSpotY) }</b>")
             self.spinBoxforHotSpotX.setValue(int(hotSpotX))
-        elif not hotSpotY == "":
+            
+            self.loadedHotSpotX = True
+        if not hotSpotY == "":
+            self.spinBoxforHotSpotX.setRange(-1,int(hotSpotX) )  #update the valid range to the new pixmap width
+            self.spinBoxforHotSpotY.setRange(-1,int(hotSpotY) )  #update the valid range to the new pixmap height
+            self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{int(hotSpotX) }</b>")    #set up default value tooltips 0 to 0
+            self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{int(hotSpotY) }</b>")
             self.spinBoxforHotSpotY.setValue(int(hotSpotY))
+            
+            self.loadedHotSpotY = True
 
         #self.dbgWindow.append_to_end(f"Load settings \n")       
         
@@ -928,7 +942,6 @@ class customBrushCursorDocker(DockWidget):
     def update_cursorHotSpot(self,key,value):
         # Convert value (0-100) to opacity (0.0-1.0)
         opacity = self.sliderforOpacity.value() / 100.0
-
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
             if key == "HotSpotX":
                 self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity ,self.sliderforRotation.value(), value , self.spinBoxforHotSpotY.value())    #create new cursor with the new hotSpotX
@@ -1104,13 +1117,21 @@ class customBrushCursorDocker(DockWidget):
                 if getItem:
                     filePath = getItem.data(self.filePathRole)  # Get file path
                     pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
-                    self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
-                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
-                    self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+                    if (self.loadedHotSpotX == True and self.loadedHotSpotY == True):    #if there are valid hotspot values loaded in, create the cursor with those values instead default one
+                        self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
+                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.spinBoxforHotSpotX.value(),self.spinBoxforHotSpotY.value())    #create a changing version of the cursor with pixmap from the static version
+                    else:
+                        self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
+                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value())    #create a changing version of the cursor with pixmap from the static version
+                        
+                    self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspots
                     self.initial_hotSpotY = self.customCursor.hotSpot().y()
                     
                     self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
                     self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+
+                    self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+                    self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")
                     
                     self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() )  #update the valid range to the new pixmap width
                     self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() )  #update the valid range to the new pixmap height
@@ -1134,8 +1155,9 @@ class customBrushCursorDocker(DockWidget):
                  if getItem:
                      filePath = getItem.data(self.filePathRole)  # Get file path
                      pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
-                     self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , centered:false , rotation:0
-                     self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value())    #create a changing version of the cursor with pixmap from the static version, scale:0 , opacity: from the slider , centered:value from checkbox , rotation:0
+                     self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
+                     self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value())    #create a changing version of the cursor with pixmap from the static version
+                     
                      self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspots 
                      self.initial_hotSpotY = self.customCursor.hotSpot().y()
                      
