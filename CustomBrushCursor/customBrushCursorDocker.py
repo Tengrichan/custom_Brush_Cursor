@@ -62,6 +62,7 @@ import shutil
 import stat
 import math
 import random
+import inspect
 
 from pathlib import Path #module to handle paths
 
@@ -162,6 +163,7 @@ class customBrushCursorDocker(DockWidget):
         self.isCustomCursorApplied = False
         self.loadedHotSpotX = False
         self.loadedHotSpotY = False
+        self.firstRun_CursorOnCanvas = False    #variable to track on first run whether the cursor is on the canvas or not so we can set the custom cursor
 
 
         #settings related stuff
@@ -729,10 +731,28 @@ class customBrushCursorDocker(DockWidget):
                     self.iconView.selectionModel().selectionChanged.connect(lambda: self.saveSettings(), Qt.UniqueConnection)    #set up icon selection change  SIGNAL  --> save the settings 
                 else:    #else don't set up the SIGNAL---SLOT connection because it would cause an error otherwise
                     pass
-            
+                    
+                #here we check on the first run if cursor is on canvas and a brush tool is selected to set a variable so we immediately set the cursor without having to leave the canvas when the cursor is created in another method
+                QMdiArea = findQMdiArea() 
+                cursor_pos = QCursor.pos()
+                local_pos = QMdiArea.mapFromGlobal(cursor_pos)
+                if QMdiArea.rect().contains(local_pos):    #if the cursor is in the MdiArea check if any of the tools are checked
+                    q_win = Krita.instance().activeWindow().qwindow()
+                    KritaShape_KisToolBrush = q_win.findChild(QToolButton,"KritaShape/KisToolBrush")
+                    KritaShape_KisToolMultiBrush = q_win.findChild(QToolButton,"KritaShape/KisToolMultiBrush")
+                    KritaShape_KisToolLazyBrush = q_win.findChild(QToolButton,"KritaShape/KisToolLazyBrush")
+                    KritaShape_KisToolDynamicBrush = q_win.findChild(QToolButton,"KritaShape/KisToolDyna")
+                    if (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() or KritaShape_KisToolDynamicBrush.isChecked() and self.isCustomCursorApplied == False ):    #if a BRUSH tool is toggled ON and custom cursor is not applied yet
+                        self.firstRun_CursorOnCanvas = True    #
+                    elif (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() or KritaShape_KisToolDynamicBrush.isChecked() and self.isCustomCursorApplied == True):    #if brush tool is selected but custom cursor is already set -> do nothing
+                        pass
+                else:    #if event happened outside of the area do nothing
+                    pass
+                              
                 #set to run the saveSettings method when the checkbox state changed SIGNAL is fired
                 self.runOnStartup.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
                 self.buttonStatus.toggle()    #toggle the button manually via code
+               
             elif (isCanvasReady()):    #if the runOnStartup was not checked but a canvas is available -- > connect the SIGNAL-SLOT connections for UI elements but only on the first run
                 self.firstRun = False    #flip the firstRun bool so when a new view is created the above code won't run again
 
@@ -800,7 +820,7 @@ class customBrushCursorDocker(DockWidget):
         #If the button is checked == True
         if checked:
             self.buttonStatus.setText('Deactivate')    #set the text on the button to "Deactivate"
-            #self.loadSettings()    #when the button is activated either via the user or via code --> load the saved settings
+            self.loadSettings()    #when the button is activated either via the user or via code --> load the saved settings
             self.createCustomCursorFromModel_Item()    #then we create the custom cursor based on the loaded settings
             self.hook_core_app()   #install eventFilters then show the widgets
             
@@ -1110,6 +1130,37 @@ class customBrushCursorDocker(DockWidget):
     def createCustomCursorFromModel_Item(self):
          #get Item based on the loaded settings:
          # if it's NOT -1 then get the corresponding item from the model and use it to create the cursor
+         
+        # Get the stack frames
+        #stack = inspect.stack()
+        # Extract just the function names, reverse them so it reads chronologically (Oldest -> Newest)
+        #call_chain = [frame.function for frame in reversed(stack)]
+        # Print it out 
+        #self.dbgWindow.append_to_end(f"createCustomCursorFromModel_Item CALL CHAIN --> {call_chain}\n")
+        #print(" -> ".join(call_chain))
+        
+        
+        #make sure model is up-to-date
+        fileList = os.listdir(self.directory_customCursorImage)
+        fileList.sort()
+        #if there is a difference between the model and the number of files in the directory  -- when the button was pressed
+        #update the model
+        if (self.iconView.model().rowCount()  != len(fileList)):
+            self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero. Need to block signals beforehand otherwise triggers both selectionChanged and currentChanged SIGNALs
+            for filename in fileList:                   
+                if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
+                    filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                    pixmap = QPixmap(filePath)
+                    if not pixmap.isNull():
+                        icon = QIcon(pixmap)
+                        item = QStandardItem(icon, "")
+                        item.setData(filePath, self.filePathRole)  # Store file path
+                        item.setData(filename,self.fileNameRole)    # Store filename
+                        self.iconView.model().appendRow(item)
+            self.iconView.viewport().update()
+            self.loadedHotSpotX = False    #reset the loadedHotSpot values as well so it won't load in values that was for another pixmap
+            self.loadedHotSpotY = False
+        
         model = self.iconView.model()
         if (model.hasChildren() ): #if the model exists and is not empty
             if  self.loadedIndex != -1:
@@ -1146,8 +1197,24 @@ class customBrushCursorDocker(DockWidget):
                     self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
                     self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
                     
-                    self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
+                    self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")   
+                    
+                    self.iconView.setCurrentIndex(self.iconView.model().index(self.loadedIndex, 0))    #set the index to (self.loadedIndex,0 )
+                    self.iconView.selectionModel().select(self.iconView.model().index(self.loadedIndex, 0), QItemSelectionModel.ClearAndSelect)	#selects the item in the view and highlights it
+                    self.iconView.scrollTo(self.iconView.model().index(self.loadedIndex, 0))
+                    self.iconView.viewport().update()
+                    
+                    #checked on first run whether the mouse cursor is on the canvas AND a brush tool is toggled AND there is a valid customCursor that can be set already
+                    if (self.firstRun_CursorOnCanvas == True):
+                        q_app = QCoreApplication.instance()
+                        q_app.setOverrideCursor(self.customCursor)    #set customCursor
+                        self.isCustomCursorApplied = True    #and the tracking variable to true as well
+                        self.firstRun_CursorOnCanvas = False    #reset the firstRun variable just in case
+                    else:    #if the firstRun variable is false do nothing
+                        pass
+                        
                 else:
+                    self.firstRun_CursorOnCanvas = False
                     self.staticCustomCursor = QCursor()    #reset the cursors 
                     self.customCursor = QCursor()
             else:    # if it's -1 then default back to the first item in the model and create the cursor with it
@@ -1181,10 +1248,26 @@ class customBrushCursorDocker(DockWidget):
                      self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
                      
                      self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
+                     
+                     self.iconView.setCurrentIndex(self.iconView.model().index(0, 0))    #set the index to 0,0 
+                     self.iconView.selectionModel().select(self.iconView.model().index(0, 0), QItemSelectionModel.ClearAndSelect)	#selects the item in the view and highlights it
+                     self.iconView.scrollTo(self.iconView.model().index(0, 0))
+                     self.iconView.viewport().update()
+                        
+                     #checked on first run whether the mouse cursor is on the canvas AND a brush tool is toggled AND there is a valid customCursor that can be set already
+                     if (self.firstRun_CursorOnCanvas == True):
+                        q_app = QCoreApplication.instance()
+                        q_app.setOverrideCursor(self.customCursor)    #set customCursor
+                        self.isCustomCursorApplied = True    #and the tracking variable to true as well
+                        self.firstRun_CursorOnCanvas = False    #reset the firstRun variable just in case
+                     else:    #if the firstRun variable is false do nothing
+                        pass
                  else:
+                    self.firstRun_CursorOnCanvas = False
                     self.staticCustomCursor = QCursor()    #reset the cursors
                     self.customCursor = QCursor()
         else:
+            self.firstRun_CursorOnCanvas = False
             self.iconView.clearSelection()         
             self.staticCustomCursor = QCursor()    #reset the cursors
             self.customCursor = QCursor()  
@@ -1498,8 +1581,6 @@ class customBrushCursorDocker(DockWidget):
                             scale = self.sliderforScale.value()
                             rotation = self.sliderforRotation.value()
                             
-                            q_app = QCoreApplication.instance()
-                            q_app.restoreOverrideCursor()    #reset the cursor before setting up the new one
                             self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0)     #static cursor
                             self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)    #dynamic cursor
                             self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
@@ -1526,15 +1607,30 @@ class customBrushCursorDocker(DockWidget):
 
                             self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
                     else:    #if there are no files in the directory thus the model is empty--> clear selection 
+                        
                         self.iconView.clearSelection()
                         self.iconView.viewport().update()        
                         self.staticCustomCursor = QCursor()    #reset the cursors
                         self.customCursor = QCursor()
+                        """
+                        q_app = QCoreApplication.instance()
+                        while q_app.overrideCursor():
+                            q_app.restoreOverrideCursor()
+
+                        self.isCustomCursorApplied = False #set the cursor status tracking var to False
+                        """
                 else:    #if there are no files in the directory --> clear selection -- > reset cursors
+                    
                     self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero.
                     self.iconView.clearSelection()         
                     self.staticCustomCursor = QCursor()    #reset the cursors
                     self.customCursor = QCursor()
+                    """
+                    q_app = QCoreApplication.instance()
+                    while q_app.overrideCursor():
+                        q_app.restoreOverrideCursor()
+                    self.isCustomCursorApplied = False #set the cursor status tracking var to False
+                    """
             ################################################################################################################                            
             elif (self.iconView.model().rowCount() <  len(fileList) ):           #ADDITION happened    --> there are less entries in the model than files in the directory --> clear model --> populate new model then set the index to 0,0 as default
                     #self.dbgWindow.append_to_end(f' ADDITION BRANCH --> model rowcount < len(fileList)!  {self.iconView.model().rowCount() <  len(fileList)}\n')   
@@ -1627,6 +1723,10 @@ class customBrushCursorDocker(DockWidget):
                 KritaShape_KisToolDynamicBrush = q_win.findChild(QToolButton,"KritaShape/KisToolDyna")
                 if (KritaShape_KisToolBrush.isChecked() or  KritaShape_KisToolMultiBrush.isChecked() or KritaShape_KisToolLazyBrush.isChecked() or KritaShape_KisToolDynamicBrush.isChecked() ):    #check if a brush tool is currently selected and the cursor is not set up yet
                     if (self.isCustomCursorApplied == False):    #brush tool button is selected but custom cursor is not applied yet
+                        #TODO
+                        #check what was selected as default brush cursor icon
+                        #restore that instead customCursor 
+                        #if it was no Cursor was selected do nothing because customCursor was created with default arrow shape already 
                         q_app.setOverrideCursor(self.customCursor)
                         self.isCustomCursorApplied = True    ##set the cursor status tracking var to True
                     if (self.isCustomCursorApplied == True):    #brush tool button is selected but custom cursor is already applied
