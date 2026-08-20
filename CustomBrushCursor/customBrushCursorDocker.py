@@ -980,7 +980,7 @@ class customBrushCursorDocker(DockWidget):
         else:
             pass
     
-     #changes the offset of the cursor icon if it has centered orientation
+    #changes the offset of the cursor icon if it has centered orientation
     #arg
     #creates an updated customCursor with a changed offset
     def centerHotspot(self):
@@ -1064,6 +1064,24 @@ class customBrushCursorDocker(DockWidget):
             msgBoxw.setText(f"Failed to change permissions for the destination directory in the plugin's folder: {e}")
             msgBoxw.exec()
 
+    #use Python to load in image data circumventing Qt's path handling 
+	#arg Path object
+	#returns with a QPixmap 
+    def loadPixmap(self,file_path:Path):
+        pixmap = QPixmap()    #Create a default null pixmap
+        
+        try:
+            image_bytes = file_path.read_bytes()    #read the file contents as raw bytes using Python 
+            pixmap.loadFromData(image_bytes)     #load the raw bytes directly into the QPixmap
+        
+            if pixmap.isNull():
+                print("Warning: Pixmap loaded data, but resulted in a null pixmap.")
+            
+        except Exception as e:
+            print(f"Error reading image file bytes: {e}")
+        
+        return pixmap	#even if it returns a Null pixmap it is handled afterward
+
 
     #open a file dialog window to open a suitable image file as a cursor image
     #arg 
@@ -1098,7 +1116,8 @@ class customBrushCursorDocker(DockWidget):
             opacity = self.sliderforOpacity.value() / 100.0
             self.sliderforScale.setValue(0) #reset the scale slider back to 0 to avoid opening a big image which size would get increased by scale value
             self.sliderforRotation.setValue(0) #reset rotation to 0
-            pixmapFromImage = QPixmap(str(destination))    #QPixmap() expects a string but destination is a WindowsPath object so we need to typecast to str
+            #pixmapFromImage = QPixmap(str(destination))    #QPixmap() expects a string but destination is a Path object so we need to typecast to str
+            pixmapFromImage = self.loadPixmap(destination)
               
             if  not (pixmapFromImage.isNull()):
                 fileList = os.listdir(self.directory_customCursorImage)
@@ -1110,12 +1129,13 @@ class customBrushCursorDocker(DockWidget):
                     if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
                         #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
                         filePath = filesDirectory / filename    #Use pathlib division (/) to  build the absolute path
-                        pixmap = QPixmap(str(filePath))    #QPixmap() expects a string but destination is a WindowsPath object so we need to typecast to str
+                        #pixmap = QPixmap(str(filePath))    #QPixmap() expects a string but gets a Path object so we need to typecast to str
+                        pixmap = self.loadPixmap(filePath)
 
                         if not pixmap.isNull():
                             icon = QIcon(pixmap)
                             item = QStandardItem(icon, "")
-                            item.setData(str(filePath), self.filePathRole)  # Store file path
+                            item.setData(filePath, self.filePathRole)  # Store file path
                             item.setData(filename,self.fileNameRole)    # Store filename
                             self.iconView.model().appendRow(item)
                 self.iconView.viewport().update()                  
@@ -1208,12 +1228,13 @@ class customBrushCursorDocker(DockWidget):
                         #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
                         #filesDirectory = Path(self.directory_customCursorImage)    #path object to store the directory path 
                         filePath = filesDirectory / filename    #Use pathlib division (/) to  build the absolute path
-                        
-                        pixmap = QPixmap(str(filePath))    #QPixmap() expects a string but destination is a WindowsPath object so we need to typecast to str
+                        #pixmap = QPixmap(str(filePath))    #QPixmap() expects a string but destination is a WindowsPath object so we need to typecast to str
+                        pixmap = self.loadPixmap(filePath)
+
                         if not pixmap.isNull():
                             icon = QIcon(pixmap)
                             item = QStandardItem(icon, "")
-                            item.setData(str(filePath), self.filePathRole)  # Store file path as str
+                            item.setData(filePath, self.filePathRole)  # Store file path as str
                             item.setData(filename,self.fileNameRole)    # Store file name which can be considered a uniqe ID
                             model.appendRow(item)
                 self.iconView.setModel(model)
@@ -1246,11 +1267,12 @@ class customBrushCursorDocker(DockWidget):
                 if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
                     #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
                     filePath = filesDirectory / filename
-                    pixmap = QPixmap(str(filePath))    #QPixmap() expects a string but destination is a WindowsPath object so we need to typecast to str
+                    #pixmap = QPixmap(str(filePath))    #QPixmap() expects a string but destination is a WindowsPath object so we need to typecast to str
+                    pixmap = self.loadPixmap(filePath)
                     if not pixmap.isNull():
                         icon = QIcon(pixmap)
                         item = QStandardItem(icon, "")
-                        item.setData(str(filePath), self.filePathRole)  # Store file path
+                        item.setData(filePath, self.filePathRole)  # Store file path
                         item.setData(filename,self.fileNameRole)    # Store filename
                         self.iconView.model().appendRow(item)
             self.iconView.viewport().update()
@@ -1263,7 +1285,8 @@ class customBrushCursorDocker(DockWidget):
                 getItem = model.item(self.loadedIndex, 0)  # Row = value , column =  0
                 if getItem:
                     filePath = getItem.data(self.filePathRole)  # Get file path
-                    pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
+                    #pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
+                    pixmapFromItem = self.loadPixmap(filePath)
                     if (self.loadedHotSpotX == True and self.loadedHotSpotY == True):    #if there are valid hotspot values loaded in, create the cursor with those values instead default one
                         self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0,False) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
                         self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.spinBoxforHotSpotX.value(),self.spinBoxforHotSpotY.value())    #create a changing version of the cursor with pixmap from the static version
@@ -1317,7 +1340,8 @@ class customBrushCursorDocker(DockWidget):
                  getItem = model.item(0, 0)  # Row = 0, column = 0
                  if getItem:
                      filePath = getItem.data(self.filePathRole)  # Get file path
-                     pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
+                     #pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
+                     pixmapFromItem = self.loadPixmap(filePath)
                      self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
                      self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked())    #create a changing version of the cursor with pixmap from the static version
                      
@@ -1387,7 +1411,8 @@ class customBrushCursorDocker(DockWidget):
                 
                 filePath = self.iconView.model().index(indexRow,indexColumn).data(self.filePathRole)   #get the absolute path from the selected item that corresponds to the index arg
                 if os.path.exists(filePath): #if the file exists on the given absolute path
-                    pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                    #pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                    pixmapFromImage = self.loadPixmap(filePath)
                     opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
                     scale = self.sliderforScale.value()
                     rotation = self.sliderforRotation.value()
@@ -1447,11 +1472,12 @@ class customBrushCursorDocker(DockWidget):
                        if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
                             #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
                             filePath = filesDirectory / filename
-                            pixmap = QPixmap(str(filePath))
+                            #pixmap = QPixmap(str(filePath))
+                            pixmap = self.loadPixmap(filePath)
                             if not pixmap.isNull():
                                 icon = QIcon(pixmap)
                                 item = QStandardItem(icon, "")
-                                item.setData(str(filePath), self.filePathRole)  # Store file path
+                                item.setData(filePath, self.filePathRole)  # Store file path
                                 item.setData(filename,self.fileNameRole)    # Store filename
                                 self.iconView.model().appendRow(item)
                     self.iconView.viewport().update()    
@@ -1465,7 +1491,8 @@ class customBrushCursorDocker(DockWidget):
                         #save the imagefile of the 0,0 indexed item --> turn it into a pixmap so it can be used to create the cursors
                         filePath = self.iconView.model().index(0,0).data(self.filePathRole)   #get the absolute path from the 0,0 indexed item
                         if os.path.exists(filePath): #if the file exists on the given absolute path
-                            pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                            #pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                            pixmapFromImage = self.loadPixmap(filePath)
                             opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
                             scale = self.sliderforScale.value()
                             rotation = self.sliderforRotation.value()
@@ -1516,11 +1543,12 @@ class customBrushCursorDocker(DockWidget):
                        if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
                             #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
                             filePath = filesDirectory / filename
-                            pixmap = QPixmap(str(filePath))
+                            #pixmap = QPixmap(str(filePath))
+                            pixmap = self.loadPixmap(filePath)
                             if not pixmap.isNull():
                                 icon = QIcon(pixmap)
                                 item = QStandardItem(icon, "")
-                                item.setData(str(filePath), self.filePathRole)  # Store file path
+                                item.setData(filePath, self.filePathRole)  # Store file path
                                 item.setData(filename,self.fileNameRole)    # Store filename
                                 self.iconView.model().appendRow(item)
 
@@ -1532,7 +1560,8 @@ class customBrushCursorDocker(DockWidget):
 
                     filePath = self.iconView.model().index(indexRow,indexColumn).data(self.filePathRole)   #get the absolute path from the index item
                     if os.path.exists(filePath): #if the file exists on the given absolute path
-                        pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                        #pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                        pixmapFromImage = self.loadPixmap(filePath)
                         opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
                         scale = self.sliderforScale.value()
                         rotation = self.sliderforRotation.value()
@@ -1595,7 +1624,8 @@ class customBrushCursorDocker(DockWidget):
             if ( self.iconView.model().rowCount()  == len(fileList)) : #here we check if the window's iconView model is up-to-date and has the same amount of items as the number of images in the directory     
                 filePath = self.iconView.model().index(index.row(),index.column()).data(self.filePathRole)   #get the absolute path from the selected item
                 if os.path.exists(filePath): #if the file exists on the given absolute path
-                    pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                    #pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                    pixmapFromImage = self.loadPixmap(filePath)
                     opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
                     scale = self.sliderforScale.value()
                     rotation = self.sliderforRotation.value()
@@ -1662,11 +1692,12 @@ class customBrushCursorDocker(DockWidget):
                        if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
                             #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
                             filePath = filesDirectory / filename
-                            pixmap = QPixmap(str(filePath))
+                            #pixmap = QPixmap(str(filePath))
+                            pixmap = self.loadPixmap(filePath)
                             if not pixmap.isNull():
                                 icon = QIcon(pixmap)
                                 item = QStandardItem(icon, "")
-                                item.setData(str(filePath), self.filePathRole)  # Store file path
+                                item.setData(filePath, self.filePathRole)  # Store file path
                                 item.setData(filename,self.fileNameRole)    # Store filename
                                 self.iconView.model().appendRow(item)
                                 
@@ -1681,7 +1712,8 @@ class customBrushCursorDocker(DockWidget):
                         #save the imagefile of the 0,0 indexed item --> turn it into a pixmap so it can be used to create the cursors
                         filePath = self.iconView.model().index(0, 0).data(self.filePathRole)   #get the absolute path from the 0,0 indexed item
                         if os.path.exists(filePath): #if the file exists on the given absolute path
-                            pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                            #pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                            pixmapFromImage = self.loadPixmap(filePath)
                             opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
                             scale = self.sliderforScale.value()
                             rotation = self.sliderforRotation.value()
@@ -1745,11 +1777,12 @@ class customBrushCursorDocker(DockWidget):
                        if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
                             #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
                             filePath = filesDirectory / filename
-                            pixmap = QPixmap(str(filePath))
+                            #pixmap = QPixmap(str(filePath))
+                            pixmap = self.loadPixmap(filePath)
                             if not pixmap.isNull():
                                 icon = QIcon(pixmap)
                                 item = QStandardItem(icon, "")
-                                item.setData(str(filePath), self.filePathRole)  # Store file path
+                                item.setData(filePath, self.filePathRole)  # Store file path
                                 item.setData(filename,self.fileNameRole)    # Store filename
                                 self.iconView.model().appendRow(item)
                                 
@@ -1760,7 +1793,8 @@ class customBrushCursorDocker(DockWidget):
 
                     filePath = self.iconView.model().index(index.row(),index.column()).data(self.filePathRole)   #get the absolute path from the index item
                     if os.path.exists(filePath): #if the file exists on the given absolute path
-                        pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                        #pixmapFromImage = QPixmap(filePath)    #create the pixmap from file
+                        pixmapFromImage = self.loadPixmap(filePath)
                         opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
                         scale = self.sliderforScale.value()
                         rotation = self.sliderforRotation.value()
