@@ -232,6 +232,8 @@ class customBrushCursorDocker(DockWidget):
                 self.spinBoxforHotSpotY.setValue(int(value))
             elif key == "runOnStartupCheckbox":
                 self.runOnStartup.setChecked(bool(value))
+            elif key == "centeredIconCheckbox":
+                self.centeredIcon.setChecked(bool(value))
             elif key == "SelectedIcon":
 
                 #self.dbgWindow.append_to_end(f'update_ui_sync_SelectedIcon: {value}\n')
@@ -384,11 +386,12 @@ class customBrushCursorDocker(DockWidget):
             	
         return (result_X,result_Y)
 
+
     #creates the custom cursor
     # first we scale the pixmap,change its opacity then  rotate around Z axis 
     #arg pixmap,scale,opacity,rotation,crosshair_bool,linuxFIX_bool
     #return QCursor
-    def createCustomCursor(self,pixmap,scale,opacity,rotation,hotSpotX = None ,hotSpotY = None ):       
+    def createCustomCursor(self,pixmap,scale,opacity,rotation,centered,hotSpotX = None ,hotSpotY = None ):       
        
         scaled_pixmap = self.pixmapScale(pixmap,scale)      #scale the pixmap with input scale value 
         scaled_pixmap = self.changeOpacity(scaled_pixmap,opacity)       #change the opacity of the already scaled pixmap with opacity
@@ -400,10 +403,16 @@ class customBrushCursorDocker(DockWidget):
         
         if (hotSpotX is None or hotSpotY is None):		
             #tuple containing the new (X,Y) values for cursor hotspot
-            newhotspot = self.calculateCursorHotspot(scaled_pixmap,transformed_pixmap,rotation)         
-            qCursor = QCursor(transformed_pixmap,newhotspot[0],newhotspot[1])     #create a cursor object from scaledImage and set its coordinates 
+            newhotspot = self.calculateCursorHotspot(scaled_pixmap,transformed_pixmap,rotation)
+            if (centered == True):
+                qCursor = QCursor(transformed_pixmap,-1,-1)     #create a cursor object from scaledImage and set its coordinates 
+            else:
+                qCursor = QCursor(transformed_pixmap,newhotspot[0],newhotspot[1])     #create a cursor object from scaledImage and set its coordinates 
         else:
-            qCursor = QCursor(transformed_pixmap,hotSpotX,hotSpotY)
+            if (centered == True):
+                qCursor = QCursor(transformed_pixmap,-1,-1)     #create a cursor object from scaledImage and set its coordinates 
+            else:
+                qCursor = QCursor(transformed_pixmap,hotSpotX,hotSpotY)
         return  qCursor	
     
     def initGUI(self):
@@ -510,6 +519,9 @@ class customBrushCursorDocker(DockWidget):
 
         # Checkboxes
         self.runOnStartup = QCheckBox("Run on startup")
+        self.centeredIcon = QCheckBox("Centered cursor icon")
+        self.centeredIcon.stateChanged.connect(self.centerHotspot)
+
         
         # Size labels
         self.labelforTopLeftPoint = QLabel("TopLeft: ( ) ")
@@ -530,6 +542,7 @@ class customBrushCursorDocker(DockWidget):
         BottomPointsLabelRowLayout.addWidget(self.labelforBottomRightPoint)
         
         optionsLayout.addWidget(self.runOnStartup, alignment=Qt.AlignTop | Qt.AlignHCenter)
+        optionsLayout.addWidget(self.centeredIcon, alignment=Qt.AlignTop | Qt.AlignHCenter)
         optionsLayout.addLayout(TopPointsLabelRowLayout)
         optionsLayout.addLayout(BottomPointsLabelRowLayout)
         optionsLayout.addWidget(self.labelforCenterPoint,alignment=Qt.AlignTop | Qt.AlignHCenter)
@@ -603,6 +616,7 @@ class customBrushCursorDocker(DockWidget):
         
         # Save Checkboxes (True/False are stored as strings "true"/"false")
         app.writeSetting(group,"Checkbox_runOnStartup", str(self.runOnStartup.isChecked()))
+        app.writeSetting(group, "Checkbox_CenteredCursorIcon", str(self.centeredIcon.isChecked()))
 
         # Save QListView selection
         selected_index = 0
@@ -669,6 +683,9 @@ class customBrushCursorDocker(DockWidget):
         runOnStartup_val = app.readSetting(group, "Checkbox_runOnStartup", "false").lower() == "true"
         self.runOnStartup.setChecked(runOnStartup_val)        
         
+        # Load Checkbox: Centered Cursor Icon state (default to False if not found)
+        is_centered = app.readSetting(group, "Checkbox_CenteredCursorIcon", "false").lower() == "true"
+        self.centeredIcon.setChecked(is_centered)
         
         # Load selected index for QListView (if no saved setting is found -1 --> set the 1st item as selected icon by default but check if there are items in the model)
         self.loadedIndex = int(app.readSetting(group,"SelectedIcon", "-1"))
@@ -691,6 +708,7 @@ class customBrushCursorDocker(DockWidget):
             self.sliderforScale.valueChanged.connect(lambda val: self.broadcast("Scale", val))
             self.sliderforRotation.valueChanged.connect(lambda val: self.broadcast("Rotation", val))
             self.runOnStartup.stateChanged.connect(lambda checked: self.broadcast("runOnStartupCheckbox",checked))
+            self.centeredIcon.stateChanged.connect(lambda checked: self.broadcast("centeredIconCheckbox",checked))
             
             self.spinBoxforHotSpotX.valueChanged.connect(lambda val: self.broadcast("HotSpotX",val))
             self.spinBoxforHotSpotY.valueChanged.connect(lambda val: self.broadcast("HotSpotY",val))  
@@ -751,6 +769,7 @@ class customBrushCursorDocker(DockWidget):
                               
                 #set to run the saveSettings method when the checkbox state changed SIGNAL is fired
                 self.runOnStartup.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
+                self.centeredIcon.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
                 self.buttonStatus.toggle()    #toggle the button manually via code
                
             elif (isCanvasReady()):    #if the runOnStartup was not checked but a canvas is available -- > connect the SIGNAL-SLOT connections for UI elements but only on the first run
@@ -768,6 +787,7 @@ class customBrushCursorDocker(DockWidget):
             
                 #set to run the saveSettings method when the checkbox state changed SIGNAL is  fired
                 self.runOnStartup.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
+                self.centeredIcon.stateChanged.connect(self.saveSettings)    #When the checkbox changes its value save settings
             else:    #if  there is no available canvas on the first run don't do anything but wait 
                pass
  
@@ -860,7 +880,8 @@ class customBrushCursorDocker(DockWidget):
         opacity = value / 100.0
         
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursors exists
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value())    #create new cursor with changed opacity based on static cusror
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.spinBoxforHotSpotX.value(),self.spinBoxforHotSpotY.value())    #create new cursor with changed opacity based on static cusror
+            """
             self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
             self.initial_hotSpotY = self.customCursor.hotSpot().y()
             
@@ -879,6 +900,7 @@ class customBrushCursorDocker(DockWidget):
             self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
             
             self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
+            """
         else:
             pass
             
@@ -893,7 +915,7 @@ class customBrushCursorDocker(DockWidget):
         opacity = self.sliderforOpacity.value() / 100.0
 
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),value,opacity,self.sliderforRotation.value())    #create new cursor with the changed scale based on static cursor
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),value,opacity,self.sliderforRotation.value(),self.centeredIcon.isChecked())    #create new cursor with the changed scale based on static cursor
             self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
             self.initial_hotSpotY = self.customCursor.hotSpot().y()
                     
@@ -932,7 +954,7 @@ class customBrushCursorDocker(DockWidget):
         opacity = self.sliderforOpacity.value() / 100.0
 
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
-            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,value)    #create new cursor with the changed rotation based on static cursor
+            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,value,self.centeredIcon.isChecked())    #create new cursor with the changed rotation based on static cursor
             self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
             self.initial_hotSpotY = self.customCursor.hotSpot().y()
                     
@@ -958,148 +980,218 @@ class customBrushCursorDocker(DockWidget):
         else:
             pass
     
+     #changes the offset of the cursor icon if it has centered orientation
+    #arg
+    #creates an updated customCursor with a changed offset
+    def centerHotspot(self):
+        #if checkbox is checked->change the cursor icon offset
+        #pass True as arg for constructor
+        if  self.centeredIcon.isChecked():
+            if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
+                opacity = self.sliderforOpacity.value() / 100.0
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),True)
+                
+                #update labels and spinbox
+                self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+                self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+                self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")       
+                self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() )  #update the valid range to the new pixmap width
+                self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() )  #update the valid range to the new pixmap height
+                self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+                self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+                self.spinBoxforHotSpotX.setValue( self.initial_hotSpotX)    #set spinBox value to cursor hotSpot 
+                self.spinBoxforHotSpotY.setValue( self.initial_hotSpotY) 
+            else:
+                pass
+        #otherwise if the pixmap is not null  and the checkbox is NOT checked -> change offset back
+        else:
+            if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
+                opacity = self.sliderforOpacity.value() / 100.0
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),False)
+                
+                #update labels and spinbox
+                self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+                self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+                self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")       
+                self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() )  #update the valid range to the new pixmap width
+                self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() )  #update the valid range to the new pixmap height
+                self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+                self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+                self.spinBoxforHotSpotX.setValue( self.initial_hotSpotX)    #set spinBox value to cursor hotSpot 
+                self.spinBoxforHotSpotY.setValue( self.initial_hotSpotY)   
+            else:
+                pass
+
+
 
     def update_cursorHotSpot(self,key,value):
         # Convert value (0-100) to opacity (0.0-1.0)
+         
+         #Get the stack frames
+        #stack = inspect.stack()
+        # Extract just the function names, reverse them so it reads chronologically (Oldest -> Newest)
+        #call_chain = [frame.function for frame in reversed(stack)]
+        # Print it out 
+        #self.dbgWindow.append_to_end(f"createCustomCursorFromModel_Item CALL CHAIN --> {call_chain}\n")
+        #print(" -> ".join(call_chain))
+        
         opacity = self.sliderforOpacity.value() / 100.0
         if not (self.customCursor.pixmap().isNull() or self.staticCustomCursor.pixmap().isNull()):    #check if the cursor exists
             if key == "HotSpotX":
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity ,self.sliderforRotation.value(), value , self.spinBoxforHotSpotY.value())    #create new cursor with the new hotSpotX
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity ,self.sliderforRotation.value(), self.centeredIcon.isChecked(), value , self.spinBoxforHotSpotY.value())    #create new cursor with the new hotSpotX
                 self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x() } )")    #update the text of labels for cursor HotSpot X and Y 
             elif key == "HotSpotY":
-                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity ,self.sliderforRotation.value(), self.spinBoxforHotSpotX.value() , value)    #create new cursor with the new hotSpotY
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity ,self.sliderforRotation.value(), self.centeredIcon.isChecked(), self.spinBoxforHotSpotX.value() , value)    #create new cursor with the new hotSpotY
                 self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y() } )")
         return    
     
     
     
    #after creating the directory for the cursor images make it writeable for current USER
-   #arg directory
+   #arg directory: Path object
    #tries to make the directory writeable for file copy operation
-    def make_directory_writable(self,directory):
-        #Change the directory permissions to make it writable.
+    def make_directory_writable(self,directory:Path):
+
         try:
-            os.chmod(directory, stat.S_IWUSR | stat.S_IRUSR) # Change the permission to allow write access for the owner
-        except Exception as e:   
+            current_mode = directory.stat().st_mode     #get the current permissions mode using pathlib
+            new_mode = current_mode | stat.S_IWUSR | stat.S_IRUSR      #merge user write/read permissions with existing ones 
+            directory.chmod(new_mode)    #apply the permissions using pathlib's built-in chmod
+        
+        except Exception as e:    
             msgBoxw = QMessageBox()
             msgBoxw.setText(f"Failed to change permissions for the destination directory in the plugin's folder: {e}")
             msgBoxw.exec()
+
 
     #open a file dialog window to open a suitable image file as a cursor image
     #arg 
     #returns with a) nothing because the "Cancel" button was clicked or b)set cursors and a new label added to gridLayout
     def open_file_dialog(self):
+        filesDirectory = Path(self.directory_customCursorImage)    #create a Path object from the image file storing path
         options = QFileDialog.Options()
         source_file = QFileDialog.getOpenFileName(self, "Open Image File", "", "Images (*.png *.bmp *.svg *.gif *.webp);;All Files (*)", options=options)
         
-        if source_file: #if the file exists and we could open it successfully
-            file_name = os.path.basename(source_file[0])    #the name of the file without any "./" or "/"
-            #self.dbgWindow.append_to_end("Open Image file -> file_name = \n")
-            try:
-                destination = os.path.join(self.directory_customCursorImage + QDir.separator() + file_name) #create the destination absolute path 
-                self.make_directory_writable(self.directory_customCursorImage) #make directory writable if it's not 
+        #source_file is a tuple
+        #(file_path,selected filter string)
+        if  not source_file[0]: #if the user clicked CANCEL -> file path will be empty --> do nothing       
+            return
+            
+        #file_name = os.path.basename(source_file[0])    #the name of the file without any "./" or "/"
+        source_path = Path(source_file[0])
+        file_name = source_path.name
+        try:
+            #Use pathlib division (/) to cleanly build the absolute destination path
+            destination = filesDirectory / file_name
+            #destination = os.path.join(self.directory_customCursorImage + QDir.separator() + file_name) #create the destination absolute path 
+            #self.make_directory_writable(self.directory_customCursorImage) #make directory writable if it's not 
+            self.make_directory_writable(filesDirectory) 
                 
-                shutil.copy(source_file[0],destination)    #copy file from source path to destination path,both absolute paths
-                msgBox = QMessageBox()
-                msgBox.setText(f"File has been successfully copied to plugin's folder ")
-                msgBox.exec() 
-                                
-                #create a pixmap from the copied image so we can create the cursors
-                opacity = self.sliderforOpacity.value() / 100.0
-                self.sliderforScale.setValue(0) #reset the scale slider back to 0 to avoid opening a big image which size would get increased by scale value
-                self.sliderforRotation.setValue(0) #reset rotation to 0
-                pixmapFromImage = QPixmap(destination)
-              
-                if  not (pixmapFromImage.isNull()):
-                    fileList = os.listdir(self.directory_customCursorImage)
-                    fileList.sort()
-                   #clear the model 
-                   #then repopulate the model so the new item -> icon will be displayed at the correct index corresponding to the picture's order in the directory along other files
-                    self.iconView.model().clear()
-                    for filename in fileList:                   
-                       if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
-                            filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
-                            pixmap = QPixmap(filePath)
-                            if not pixmap.isNull():
-                                icon = QIcon(pixmap)
-                                item = QStandardItem(icon, "")
-                                item.setData(filePath, self.filePathRole)  # Store file path
-                                item.setData(filename,self.fileNameRole)    # Store filename
-                                self.iconView.model().appendRow(item)
-                    self.iconView.viewport().update()                  
-                    
-                    #here we check for the situation when there was no image in the directory at startup
-                    #so when a new image is added we connect the saveSettings SLOT to selectionChanged SIGNAL because the model now has at least one item
-                    if (self.iconView.model().hasChildren()):    #if the iconView model has items
-                        self.iconView.selectionModel().selectionChanged.disconnect()	#disconnect any previous saveSettings connection when adding a new item
-                        self.iconView.selectionModel().selectionChanged.connect(lambda: self.saveSettings() , Qt.UniqueConnection)    #set up icon selection change  SIGNAL  --> save the settings 
-                    #search for the new item based on the newly opened image file's name
-                    # so we use the file_name var and search for the item in the model with a for-loop
-                    # when found -> get its index then use that index to automatically select the icon in the viewport
-                    for row in range(self.iconView.model().rowCount()):
-                        item = self.iconView.model().item(row)
-                        if item.data(self.fileNameRole) == file_name:
-                            index = self.iconView.model().indexFromItem(item)
-                            self.iconView.setCurrentIndex(index)		#considered a click event so the clicked SIGNAL will run the assigned SLOTs 
-                            self.iconView.selectionModel().select(index, QItemSelectionModel.ClearAndSelect)	#selects the item in the view and highlights it
-                            self.iconView.scrollTo(index)    #if there are too many items,this method ensures the view will show the right item 
-                            break
-                    
-                    #when the set up is complete create the cursors
-                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1.0,0) #an original version of the cursor which will be used to create a changing version so it's created with default values: "0" for scale and "1" for full opacity
-                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity,0)  #create the changing cursor  from the static cursor
-                    self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
-                    self.initial_hotSpotY = self.customCursor.hotSpot().y()
-                            
-                    self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
-                    self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
- 		
-                    self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
-                    self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")
-                    self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() ) #update the valid range to the new pixmap width
-                    self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() ) #update the valid range to the new pixmap height
-                    self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
-                    self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
-            		
-                    self.spinBoxforHotSpotX.setValue(self.initial_hotSpotX)
-                    self.spinBoxforHotSpotY.setValue(self.initial_hotSpotY)
-                    
-                    #update the labels for different points
-                    self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
-                    self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
-                    self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
-                    self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
-                    
-                    self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
-
-                else:
-                    msgBox = QMessageBox()
-                    msgBox.setText(f"Pixmap is NULL after opening file")
-                    msgBox.exec()
-                
-                
-            except Exception as e:
-                msgBox2 = QMessageBox()
-                msgBox2.setText(f" Exception occured: {e} ")
-                msgBox2.exec() 
-                if not (os.access(destination,os.W_OK)):
-                     msgBox = QMessageBox()
-                     msgBox.setText(f" No WRITE access to the folder ")
-                     msgBox.exec() 
-                else:
-                     msgBox = QMessageBox()
-                     msgBox.setText(f" ERROR copying file: {destination} ")
-                     msgBox.exec() 
-        else:
+            #shutil.copy(source_file[0],destination)    #copy file from source path to destination path,both absolute paths
+            shutil.copy(source_path, destination)
             msgBox = QMessageBox()
-            msgBox.setText(f" ERROR while opening file!")
+            msgBox.setText(f"File has been successfully copied to plugin's folder ")
             msgBox.exec() 
+                                
+            #create a pixmap from the copied image so we can create the cursors
+            opacity = self.sliderforOpacity.value() / 100.0
+            self.sliderforScale.setValue(0) #reset the scale slider back to 0 to avoid opening a big image which size would get increased by scale value
+            self.sliderforRotation.setValue(0) #reset rotation to 0
+            pixmapFromImage = QPixmap(str(destination))    #QPixmap() expects a string but destination is a WindowsPath object so we need to typecast to str
+              
+            if  not (pixmapFromImage.isNull()):
+                fileList = os.listdir(self.directory_customCursorImage)
+                fileList.sort()
+               #clear the model 
+               #then repopulate the model so the new item -> icon will be displayed at the correct index corresponding to the picture's order in the directory along other files
+                self.iconView.model().clear()
+                for filename in fileList:                   
+                    if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
+                        #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                        filePath = filesDirectory / filename    #Use pathlib division (/) to  build the absolute path
+                        pixmap = QPixmap(str(filePath))    #QPixmap() expects a string but destination is a WindowsPath object so we need to typecast to str
+
+                        if not pixmap.isNull():
+                            icon = QIcon(pixmap)
+                            item = QStandardItem(icon, "")
+                            item.setData(str(filePath), self.filePathRole)  # Store file path
+                            item.setData(filename,self.fileNameRole)    # Store filename
+                            self.iconView.model().appendRow(item)
+                self.iconView.viewport().update()                  
+                    
+               #here we check for the situation when there was no image in the directory at startup
+               #so when a new image is added we connect the saveSettings SLOT to selectionChanged SIGNAL because the model now has at least one item
+                if (self.iconView.model().hasChildren()):    #if the iconView model has items
+                    self.iconView.selectionModel().selectionChanged.disconnect()	#disconnect any previous saveSettings connection when adding a new item
+                    self.iconView.selectionModel().selectionChanged.connect(lambda: self.saveSettings() , Qt.UniqueConnection)    #set up icon selection change  SIGNAL  --> save the settings 
+               #search for the new item based on the newly opened image file's name
+               # so we use the file_name var and search for the item in the model with a for-loop
+               # when found -> get its index then use that index to automatically select the icon in the viewport
+                for row in range(self.iconView.model().rowCount()):
+                    item = self.iconView.model().item(row)
+                    if item.data(self.fileNameRole) == file_name:
+                        index = self.iconView.model().indexFromItem(item)
+                        self.iconView.setCurrentIndex(index)		#considered a click event so the clicked SIGNAL will run the assigned SLOTs 
+                        self.iconView.selectionModel().select(index, QItemSelectionModel.ClearAndSelect)	#selects the item in the view and highlights it
+                        self.iconView.scrollTo(index)    #if there are too many items,this method ensures the view will show the right item 
+                        break
+                    
+               #when the set up is complete create the cursors
+                self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1.0,0,False) #an original version of the cursor which will be used to create a changing version so it's created with default values: "0" for scale and "1" for full opacity
+                self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),0,opacity,0,self.centeredIcon.isChecked())  #create the changing cursor  from the static cursor
+                self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
+                self.initial_hotSpotY = self.customCursor.hotSpot().y()
+                            
+                self.labelforWidth.setText(f"Width: {self.customCursor.pixmap().size().width() }")    #update the text of labels
+                self.labelforHeight.setText(f"Height: {self.customCursor.pixmap().size().height() }")
+ 		
+                self.labelforHotSpotX.setText(f"HotSpot X: ( {self.customCursor.hotSpot().x()} )")    #update the text of labels for cursor HotSpot X and Y 
+                self.labelforHotSpotY.setText(f"HotSpot Y: ( {self.customCursor.hotSpot().y()} )")
+                self.spinBoxforHotSpotX.setRange(-1,self.customCursor.pixmap().size().width() ) #update the valid range to the new pixmap width
+                self.spinBoxforHotSpotY.setRange(-1,self.customCursor.pixmap().size().height() ) #update the valid range to the new pixmap height
+                self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
+                self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
+            		
+                self.spinBoxforHotSpotX.setValue(self.initial_hotSpotX)
+                self.spinBoxforHotSpotY.setValue(self.initial_hotSpotY)
+                    
+               #update the labels for different points
+                self.labelforTopLeftPoint.setText(f"TopLeft: {self.customCursor.pixmap().rect().topLeft().x(),self.customCursor.pixmap().rect().topLeft().y()}  ")
+                self.labelforTopRightPoint.setText(f"TopRight: {self.customCursor.pixmap().rect().topRight().x(),self.customCursor.pixmap().rect().topRight().y()} ")
+                self.labelforBottomLeftPoint.setText(f"BottomLeft: {self.customCursor.pixmap().rect().bottomLeft().x(),self.customCursor.pixmap().rect().bottomLeft().y()} ")
+                self.labelforBottomRightPoint.setText(f"BottomRight: {self.customCursor.pixmap().rect().bottomRight().x(),self.customCursor.pixmap().rect().bottomRight().y()} ") 
+                    
+                self.labelforCenterPoint.setText(f"Center point: ( {(self.customCursor.pixmap().size().width() / 2)}, {(self.customCursor.pixmap().size().height() / 2)}) / ( -1 , -1)")
+
+            else:
+                msgBox = QMessageBox()
+                msgBox.setText(f"Pixmap is NULL after opening file")
+                msgBox.exec()
+                
+                
+        except Exception as e:
+            msgBox2 = QMessageBox()
+            msgBox2.setText(f" Exception occured: {e} ")
+            msgBox2.exec() 
+            
+            if not (os.access(destination,os.W_OK)):
+               msgBox = QMessageBox()
+               msgBox.setText(f" No WRITE access to the folder ")
+               msgBox.exec() 
+            else:
+               msgBox = QMessageBox()
+               msgBox.setText(f" ERROR copying file: {destination} ")
+               msgBox.exec() 
+
 
     #initialize the iconView model with the items created based on pictures , this runs only once when a new window is created
     #arg 
     #return with a) nothing or b) filled model with items
     def initIconView_list(self):
-        if ( os.path.isdir(self.directory_customCursorImage) ): #if the directory for customCursorImage exists
+        filesDirectory = Path(self.directory_customCursorImage)
+        
+        if ( filesDirectory ): #if the directory for customCursorImage exists
             fileList = os.listdir(self.directory_customCursorImage)	#save the number of items that are in the directory
             if not fileList :    #if filelist is empty -> no file can be found in the directory -> do nothing
                 model = QStandardItemModel()    #even if there are no files found in the directory create the model itself for error checks
@@ -1113,12 +1205,15 @@ class customBrushCursorDocker(DockWidget):
                 model = QStandardItemModel()
                 for filename in fileList:                   
                     if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
-                        filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
-                        pixmap = QPixmap(filePath)
+                        #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                        #filesDirectory = Path(self.directory_customCursorImage)    #path object to store the directory path 
+                        filePath = filesDirectory / filename    #Use pathlib division (/) to  build the absolute path
+                        
+                        pixmap = QPixmap(str(filePath))    #QPixmap() expects a string but destination is a WindowsPath object so we need to typecast to str
                         if not pixmap.isNull():
                             icon = QIcon(pixmap)
                             item = QStandardItem(icon, "")
-                            item.setData(filePath, self.filePathRole)  # Store file path
+                            item.setData(str(filePath), self.filePathRole)  # Store file path as str
                             item.setData(filename,self.fileNameRole)    # Store file name which can be considered a uniqe ID
                             model.appendRow(item)
                 self.iconView.setModel(model)
@@ -1139,7 +1234,7 @@ class customBrushCursorDocker(DockWidget):
         #self.dbgWindow.append_to_end(f"createCustomCursorFromModel_Item CALL CHAIN --> {call_chain}\n")
         #print(" -> ".join(call_chain))
         
-        
+        filesDirectory = Path(self.directory_customCursorImage)
         #make sure model is up-to-date
         fileList = os.listdir(self.directory_customCursorImage)
         fileList.sort()
@@ -1149,12 +1244,13 @@ class customBrushCursorDocker(DockWidget):
             self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero. Need to block signals beforehand otherwise triggers both selectionChanged and currentChanged SIGNALs
             for filename in fileList:                   
                 if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
-                    filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
-                    pixmap = QPixmap(filePath)
+                    #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                    filePath = filesDirectory / filename
+                    pixmap = QPixmap(str(filePath))    #QPixmap() expects a string but destination is a WindowsPath object so we need to typecast to str
                     if not pixmap.isNull():
                         icon = QIcon(pixmap)
                         item = QStandardItem(icon, "")
-                        item.setData(filePath, self.filePathRole)  # Store file path
+                        item.setData(str(filePath), self.filePathRole)  # Store file path
                         item.setData(filename,self.fileNameRole)    # Store filename
                         self.iconView.model().appendRow(item)
             self.iconView.viewport().update()
@@ -1169,11 +1265,11 @@ class customBrushCursorDocker(DockWidget):
                     filePath = getItem.data(self.filePathRole)  # Get file path
                     pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
                     if (self.loadedHotSpotX == True and self.loadedHotSpotY == True):    #if there are valid hotspot values loaded in, create the cursor with those values instead default one
-                        self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
-                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.spinBoxforHotSpotX.value(),self.spinBoxforHotSpotY.value())    #create a changing version of the cursor with pixmap from the static version
+                        self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0,False) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
+                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked(),self.spinBoxforHotSpotX.value(),self.spinBoxforHotSpotY.value())    #create a changing version of the cursor with pixmap from the static version
                     else:
-                        self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
-                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value())    #create a changing version of the cursor with pixmap from the static version
+                        self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0,False) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
+                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked())    #create a changing version of the cursor with pixmap from the static version
                         
                     self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspots
                     self.initial_hotSpotY = self.customCursor.hotSpot().y()
@@ -1223,7 +1319,7 @@ class customBrushCursorDocker(DockWidget):
                      filePath = getItem.data(self.filePathRole)  # Get file path
                      pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
                      self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
-                     self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value())    #create a changing version of the cursor with pixmap from the static version
+                     self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked())    #create a changing version of the cursor with pixmap from the static version
                      
                      self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspots 
                      self.initial_hotSpotY = self.customCursor.hotSpot().y()
@@ -1276,8 +1372,9 @@ class customBrushCursorDocker(DockWidget):
      #arg: the current icon's index row and column
      #return  updated viewport and cursors
     def syncIconViewport(self,indexRow,indexColumn):
-          #if the arg  ndex is valid
-        #self.dbgWindow.append_to_end(f'Incoming INDEX parameter for SYNCICONVIEWPORT:   {indexRow,indexColumn} \n')        
+         #if the arg  index is valid
+        #self.dbgWindow.append_to_end(f'Incoming INDEX parameter for SYNCICONVIEWPORT:   {indexRow,indexColumn} \n')      
+        filesDirectory = Path(self.directory_customCursorImage)  
         if ( indexRow > -1 ):    
             #self.dbgWindow.append_to_end(f'INDEX IS VALID for SYNCICONVIEWPORT:   {indexRow,indexColumn} \n')
             #create a fresh filelist of the files in the directory
@@ -1294,9 +1391,10 @@ class customBrushCursorDocker(DockWidget):
                     opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
                     scale = self.sliderforScale.value()
                     rotation = self.sliderforRotation.value()
+                    centered = self.centeredIcon.isChecked()
 
-                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0) 
-                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)
+                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False) 
+                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,centered)
             
                     self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
                     self.initial_hotSpotY = self.customCursor.hotSpot().y()
@@ -1347,12 +1445,13 @@ class customBrushCursorDocker(DockWidget):
                     self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero. Need to block signals beforehand otherwise triggers both selectionChanged and currentChanged SIGNALs
                     for filename in fileList:                   
                        if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
-                            filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
-                            pixmap = QPixmap(filePath)
+                            #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                            filePath = filesDirectory / filename
+                            pixmap = QPixmap(str(filePath))
                             if not pixmap.isNull():
                                 icon = QIcon(pixmap)
                                 item = QStandardItem(icon, "")
-                                item.setData(filePath, self.filePathRole)  # Store file path
+                                item.setData(str(filePath), self.filePathRole)  # Store file path
                                 item.setData(filename,self.fileNameRole)    # Store filename
                                 self.iconView.model().appendRow(item)
                     self.iconView.viewport().update()    
@@ -1370,10 +1469,11 @@ class customBrushCursorDocker(DockWidget):
                             opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
                             scale = self.sliderforScale.value()
                             rotation = self.sliderforRotation.value()
+                            centered = self.centeredIcon.isChecked()
                             q_app = QCoreApplication.instance()
                             q_app.restoreOverrideCursor()    #reset the cursor before setting up the new one
-                            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0)     #static cursor
-                            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)    #dynamic cursor
+                            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False)     #static cursor
+                            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,centered)    #dynamic cursor
                             self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
                             self.initial_hotSpotY = self.customCursor.hotSpot().y()
                             
@@ -1414,12 +1514,13 @@ class customBrushCursorDocker(DockWidget):
                     self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero.                        
                     for filename in fileList:                   
                        if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
-                            filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
-                            pixmap = QPixmap(filePath)
+                            #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                            filePath = filesDirectory / filename
+                            pixmap = QPixmap(str(filePath))
                             if not pixmap.isNull():
                                 icon = QIcon(pixmap)
                                 item = QStandardItem(icon, "")
-                                item.setData(filePath, self.filePathRole)  # Store file path
+                                item.setData(str(filePath), self.filePathRole)  # Store file path
                                 item.setData(filename,self.fileNameRole)    # Store filename
                                 self.iconView.model().appendRow(item)
 
@@ -1435,11 +1536,12 @@ class customBrushCursorDocker(DockWidget):
                         opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
                         scale = self.sliderforScale.value()
                         rotation = self.sliderforRotation.value()
+                        centered = self.centeredIcon.isChecked()
                         
                         q_app = QCoreApplication.instance()
                         q_app.restoreOverrideCursor()    #reset the cursor before setting up the new one
-                        self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0)     #static cursor
-                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)    #dynamic cursor
+                        self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False)     #static cursor
+                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,centered)    #dynamic cursor
                         self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
                         self.initial_hotSpotY = self.customCursor.hotSpot().y()
                             
@@ -1480,6 +1582,7 @@ class customBrushCursorDocker(DockWidget):
      #arg index of clicked icon
      #return  with cursors or none if there are no files in the directory
     def on_icon_clicked(self,index):
+        filesDirectory = Path(self.directory_customCursorImage)
         #self.dbgWindow.append_to_end(f'Incoming INDEX parameter for on_icon_clicked:   {index.row(),index.column()} \n')
         if ( index.isValid() ):    #if the given index is valid,we handle the -1 situation    
             fileList = os.listdir(self.directory_customCursorImage)
@@ -1496,9 +1599,10 @@ class customBrushCursorDocker(DockWidget):
                     opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
                     scale = self.sliderforScale.value()
                     rotation = self.sliderforRotation.value()
+                    centered = self.centeredIcon.isChecked()
 
-                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0) 
-                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)           
+                    self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False) 
+                    self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,centered)           
                     self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
                     self.initial_hotSpotY = self.customCursor.hotSpot().y()
                     
@@ -1556,17 +1660,18 @@ class customBrushCursorDocker(DockWidget):
                     self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero. Need to block signals beforehand otherwise triggers both selectionChanged and currentChanged SIGNALs
                     for filename in fileList:                   
                        if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
-                            filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
-                            pixmap = QPixmap(filePath)
+                            #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                            filePath = filesDirectory / filename
+                            pixmap = QPixmap(str(filePath))
                             if not pixmap.isNull():
                                 icon = QIcon(pixmap)
                                 item = QStandardItem(icon, "")
-                                item.setData(filePath, self.filePathRole)  # Store file path
+                                item.setData(str(filePath), self.filePathRole)  # Store file path
                                 item.setData(filename,self.fileNameRole)    # Store filename
                                 self.iconView.model().appendRow(item)
                                 
                     self.iconView.viewport().update()
-                    QMessageBox.warning(self, "File Missing", f"The file {filePath} was not found and has been removed.")
+                    QMessageBox.warning(self, "File Missing", f" A file was not found and has been removed.")
                     if (self.iconView.model().hasIndex(0, 0)):    #does the iconView have at least one item in it
                         self.iconView.setCurrentIndex(self.iconView.model().index(0, 0))    #set the index to 0,0
                         self.iconView.selectionModel().select(self.iconView.model().index(0, 0), QItemSelectionModel.ClearAndSelect)	#selects the item in the view and highlights it
@@ -1580,9 +1685,10 @@ class customBrushCursorDocker(DockWidget):
                             opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
                             scale = self.sliderforScale.value()
                             rotation = self.sliderforRotation.value()
+                            centered = self.centeredIcon.isChecked()
                             
-                            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0)     #static cursor
-                            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)    #dynamic cursor
+                            self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False)     #static cursor
+                            self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,centered)    #dynamic cursor
                             self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
                             self.initial_hotSpotY = self.customCursor.hotSpot().y()
                             
@@ -1637,12 +1743,13 @@ class customBrushCursorDocker(DockWidget):
                     self.iconView.model().clear()    #Removes all items (including header items) from the model and sets the number of rows and columns to zero.  
                     for filename in fileList:                   
                        if filename.lower().endswith(('.png', '.bmp', '.svg' , '.gif' , '.webp' )):
-                            filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
-                            pixmap = QPixmap(filePath)
+                            #filePath = os.path.join(self.directory_customCursorImage + QDir.separator() + filename)	#create absolute path for image file 
+                            filePath = filesDirectory / filename
+                            pixmap = QPixmap(str(filePath))
                             if not pixmap.isNull():
                                 icon = QIcon(pixmap)
                                 item = QStandardItem(icon, "")
-                                item.setData(filePath, self.filePathRole)  # Store file path
+                                item.setData(str(filePath), self.filePathRole)  # Store file path
                                 item.setData(filename,self.fileNameRole)    # Store filename
                                 self.iconView.model().appendRow(item)
                                 
@@ -1657,11 +1764,12 @@ class customBrushCursorDocker(DockWidget):
                         opacity = self.sliderforOpacity.value() / 100.0    #get opacity value from slider
                         scale = self.sliderforScale.value()
                         rotation = self.sliderforRotation.value()
+                        centered = self.centeredIcon.isChecked()
                         
                         q_app = QCoreApplication.instance()
                         q_app.restoreOverrideCursor()    #reset the cursor before setting up the new one
-                        self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0)     #static cursor
-                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation)    #dynamic cursor
+                        self.staticCustomCursor = self.createCustomCursor(pixmapFromImage,0,1,0,False)     #static cursor
+                        self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),scale,opacity,rotation,centered)    #dynamic cursor
                         self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
                         self.initial_hotSpotY = self.customCursor.hotSpot().y()
                             
