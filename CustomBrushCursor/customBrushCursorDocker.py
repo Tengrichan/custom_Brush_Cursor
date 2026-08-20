@@ -1001,7 +1001,10 @@ class customBrushCursorDocker(DockWidget):
                 self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
                 self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
                 self.spinBoxforHotSpotX.setValue( self.initial_hotSpotX)    #set spinBox value to cursor hotSpot 
-                self.spinBoxforHotSpotY.setValue( self.initial_hotSpotY) 
+                self.spinBoxforHotSpotY.setValue( self.initial_hotSpotY)
+                
+                self.spinBoxforHotSpotX.setEnabled(False) 
+                self.spinBoxforHotSpotY.setEnabled(False)
             else:
                 pass
         #otherwise if the pixmap is not null  and the checkbox is NOT checked -> change offset back
@@ -1010,6 +1013,8 @@ class customBrushCursorDocker(DockWidget):
                 opacity = self.sliderforOpacity.value() / 100.0
                 self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(),self.sliderforScale.value(),opacity,self.sliderforRotation.value(),False)
                 
+                self.spinBoxforHotSpotX.setEnabled(True) 
+                self.spinBoxforHotSpotY.setEnabled(True)
                 #update labels and spinbox
                 self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspot
                 self.initial_hotSpotY = self.customCursor.hotSpot().y()
@@ -1020,7 +1025,8 @@ class customBrushCursorDocker(DockWidget):
                 self.spinBoxforHotSpotX.setToolTip(f"Valid range: <b>-1</b> to <b>{self.customCursor.pixmap().size().width() }</b>")    #set up default value tooltips 0 to 0
                 self.spinBoxforHotSpotY.setToolTip(f"Valid range:  <b>-1</b> to <b>{self.customCursor.pixmap().size().height() }</b>")
                 self.spinBoxforHotSpotX.setValue( self.initial_hotSpotX)    #set spinBox value to cursor hotSpot 
-                self.spinBoxforHotSpotY.setValue( self.initial_hotSpotY)   
+                self.spinBoxforHotSpotY.setValue( self.initial_hotSpotY)
+                   
             else:
                 pass
 
