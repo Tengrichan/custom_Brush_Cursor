@@ -1348,7 +1348,7 @@ class customBrushCursorDocker(DockWidget):
                      filePath = getItem.data(self.filePathRole)  # Get file path
                      #pixmapFromItem = QPixmap(filePath)    #create the pixmap via this absolute path then create the cursors
                      pixmapFromItem = self.loadPixmap(filePath)
-                     self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
+                     self.staticCustomCursor = self.createCustomCursor(pixmapFromItem,0,1,0,False) 	#create a static version of the cursor with pixmap, scale:0 , opacity:1 , rotation:0
                      self.customCursor = self.createCustomCursor(self.staticCustomCursor.pixmap(), self.sliderforScale.value(), (self.sliderforOpacity.value() / 100),self.sliderforRotation.value(),self.centeredIcon.isChecked())    #create a changing version of the cursor with pixmap from the static version
                      
                      self.initial_hotSpotX = self.customCursor.hotSpot().x()    #save the initially calculated hotspots 
